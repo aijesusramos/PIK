@@ -1,0 +1,6 @@
+bin/
+obj/
+pik.db*
+almacenamiento/
+prueba.jpeg
+appsettings.Development.json

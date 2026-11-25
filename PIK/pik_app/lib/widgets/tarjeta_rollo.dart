@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../filtros/filtros.dart';
 import '../models/modelos.dart';
 import '../theme.dart';
 
@@ -110,8 +111,8 @@ class _ChipEstado extends StatelessWidget {
   }
 }
 
-/// Cuadro que representa visualmente el filtro. Provisional: cuando
-/// definamos los filtros reales en la cámara, aquí se mostrará el mismo efecto.
+/// Cuadro que muestra el efecto del filtro: un degradado de colores al que se le
+/// aplica la misma matriz que a las fotos (ver filtros.dart).
 class MuestraFiltro extends StatelessWidget {
   const MuestraFiltro({super.key, required this.filtro, this.tamano = 56});
 
@@ -120,23 +121,29 @@ class MuestraFiltro extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colores = switch (filtro) {
-      FiltroRollo.original => const [Color(0xFFF2C14E), Color(0xFF5DA9E9), Color(0xFF6BBF59)],
-      FiltroRollo.blancoNegro => const [Color(0xFFEEEEEE), Color(0xFF888888), Color(0xFF222222)],
-      FiltroRollo.redBlue => const [Color(0xFFD7263D), Color(0xFF7B2CBF), Color(0xFF1B4DFF)],
-    };
-    return Container(
+    Widget muestra = Container(
       width: tamano,
       height: tamano,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colorAcento.withValues(alpha: 0.4)),
+      decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: colores,
+          colors: [Color(0xFFF2C14E), Color(0xFFE76F51), Color(0xFF5DA9E9), Color(0xFF6BBF59)],
         ),
       ),
+    );
+
+    final matriz = matrizDeFiltro(filtro);
+    if (matriz != null) {
+      muestra = ColorFiltered(colorFilter: ColorFilter.matrix(matriz), child: muestra);
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colorAcento.withValues(alpha: 0.4)),
+      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(7), child: muestra),
     );
   }
 }

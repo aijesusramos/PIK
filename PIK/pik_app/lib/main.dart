@@ -5,6 +5,7 @@ import 'api/api_client.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
+import 'services/fotos_service.dart';
 import 'services/rollos_service.dart';
 import 'theme.dart';
 
@@ -20,6 +21,7 @@ void main() {
         Provider<ApiClient>.value(value: api),
         ChangeNotifierProvider<AuthService>.value(value: auth),
         Provider<RollosService>(create: (_) => RollosService(api)),
+        Provider<FotosService>(create: (_) => FotosService(api)),
       ],
       child: const PikApp(),
     ),

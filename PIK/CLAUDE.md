@@ -71,7 +71,7 @@ dotnet ef database update
 
 ## App (pik_app)
 
-- Paquetes: `http`, `provider`, `flutter_secure_storage`.
+- Paquetes: `http`, `http_parser`, `provider`, `flutter_secure_storage`, `camera`, `image`.
 - En Flutter 3.50 la plantilla usa `package:material_ui/material_ui.dart` (Material separado del
   framework).
 - `lib/config.dart` — URL de la API con `--dart-define=API_URL=...` (por defecto
@@ -81,8 +81,25 @@ dotnet ef database update
 - `lib/services/` — `AuthService` (ChangeNotifier; guarda el token en `flutter_secure_storage`),
   `RollosService`.
 - `lib/models/modelos.dart` — espejo de los DTOs (enums con su texto `api`).
-- `lib/screens/` — login, registro, home (rollos por estado), nuevo rollo (filtro → capacidad).
-- Pendiente: cámara (rollo Activo), galería (Revelado), filtros reales, notificaciones FCM.
+- `lib/screens/` — login, registro, home (rollos por estado), nuevo rollo (filtro → capacidad),
+  cámara (`camara_screen.dart`, al tocar un rollo Activo).
+- `lib/filtros/filtros.dart` — **fuente única de los filtros**: matrices de color 4×5 (formato de
+  `ColorFilter.matrix`). Se usan en la vista previa (`ColorFiltered`), en `MuestraFiltro` y en
+  `procesarFoto` (decodifica, endereza por EXIF, reduce a 1920 px, aplica la matriz, recodifica
+  JPEG q90 y así borra el EXIF/GPS). No importa Flutter para poder correr en `compute`.
+- Cámara: la foto **no se muestra** al tomarla (estilo analógico), solo avanza el contador. Una foto
+  a la vez: capturar → filtrar → subir (`FotosService`, multipart `archivo` image/jpeg + `ancho`,
+  `alto`, `fechaCapturaUtc`). Si falla la red queda pendiente para reintentar; un 409 cierra la
+  cámara. Al llenarse, la API cierra el rollo y la app avisa (Revelando o EnCola).
+- **En web (Chrome) la vista previa NO muestra el filtro** (confirmado): `camera_web` usa un
+  elemento `<video>` del navegador y `ColorFiltered` no se le aplica. La foto guardada sí lleva el
+  filtro. En el teléfono se espera que la vista previa sí lo muestre (pendiente de probar).
+- Los valores de las matrices (sobre todo Red&Blue, hoy un duotono azul→morado→rojo) son
+  provisionales: el autor los ajustará después a su gusto. Cambiarlos solo en `filtros.dart`.
+- Permisos: Android lo declara el plugin `camera`; iOS `NSCameraUsageDescription` en Info.plist.
+  `enableAudio: false` para no pedir micrófono.
+- Pruebas en `test/` (`flutter test`): modelos, filtros, subida con `MockClient`, login.
+- Pendiente: galería (Revelado), notificaciones FCM.
 
 ## Entorno
 

@@ -8,6 +8,7 @@ import '../models/modelos.dart';
 import '../services/auth_service.dart';
 import '../services/rollos_service.dart';
 import '../widgets/tarjeta_rollo.dart';
+import 'camara_screen.dart';
 import 'nuevo_rollo_screen.dart';
 
 /// Pantalla principal: los rollos del usuario agrupados por estado.
@@ -96,11 +97,17 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _abrirCamara(Rollo rollo) async {
+    final huboCambios = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => CamaraScreen(rollo: rollo)),
+    );
+    if (huboCambios == true) _cargar(silencioso: true);
+  }
+
   void _abrirRollo(Rollo rollo) {
-    // Se conecta en los siguientes pasos: cámara (Activo) y galería (Revelado).
     switch (rollo.estado) {
       case EstadoRollo.activo:
-        _mostrarMensaje('La cámara llega en el siguiente paso.');
+        _abrirCamara(rollo);
       case EstadoRollo.revelado:
         _mostrarMensaje('La galería llega en un paso posterior.');
       case EstadoRollo.enCola:

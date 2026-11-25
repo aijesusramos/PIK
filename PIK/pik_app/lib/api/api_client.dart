@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../config.dart';
 
@@ -47,6 +48,36 @@ class ApiClient {
     return _procesar(respuesta);
   }
 
+  /// Sube un archivo con multipart/form-data (como un formulario HTML con <input type=file>).
+  /// [campos] son los demás valores del formulario. Las fotos pueden tardar más, por eso
+  /// el tiempo de espera es mayor que en las demás peticiones.
+  Future<dynamic> postArchivo(
+    String ruta, {
+    required String campoArchivo,
+    required List<int> bytes,
+    required String nombreArchivo,
+    required MediaType tipo,
+    Map<String, String> campos = const {},
+  }) async {
+    final respuesta = await _enviar(
+      () async {
+        // Un MultipartRequest solo se puede enviar una vez: se crea uno nuevo en cada intento.
+        final peticion = http.MultipartRequest('POST', _uri(ruta))
+          ..headers.addAll(_headers(json: false))
+          ..fields.addAll(campos)
+          ..files.add(http.MultipartFile.fromBytes(
+            campoArchivo,
+            bytes,
+            filename: nombreArchivo,
+            contentType: tipo,
+          ));
+        return http.Response.fromStream(await _client.send(peticion));
+      },
+      limite: const Duration(seconds: 60),
+    );
+    return _procesar(respuesta);
+  }
+
   Uri _uri(String ruta, [Map<String, String>? query]) {
     final uri = Uri.parse('${Config.apiUrl}$ruta');
     return query == null ? uri : uri.replace(queryParameters: query);
@@ -57,9 +88,12 @@ class ApiClient {
         if (token != null) 'Authorization': 'Bearer $token',
       };
 
-  Future<http.Response> _enviar(Future<http.Response> Function() peticion) async {
+  Future<http.Response> _enviar(
+    Future<http.Response> Function() peticion, {
+    Duration limite = const Duration(seconds: 20),
+  }) async {
     try {
-      return await peticion().timeout(const Duration(seconds: 20));
+      return await peticion().timeout(limite);
     } on TimeoutException {
       throw ApiException(0, 'El servidor tardó demasiado en responder.');
     } catch (_) {

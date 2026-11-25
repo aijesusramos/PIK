@@ -100,3 +100,21 @@ class Rollo {
   static DateTime? _fecha(Object? valor) =>
       valor == null ? null : DateTime.parse(valor as String);
 }
+
+/// Respuesta de la API al subir una foto (FotoSubidaRespuesta).
+/// No trae la URL de la foto: sigue bloqueada hasta que el rollo se revele.
+class FotoSubida {
+  FotoSubida({required this.fotoId, required this.numeroEnRollo, required this.rollo});
+
+  final String fotoId;
+  final int numeroEnRollo;
+
+  /// El rollo actualizado. Si era la última foto, ya viene en Revelando o En cola.
+  final Rollo rollo;
+
+  factory FotoSubida.fromJson(Map<String, dynamic> j) => FotoSubida(
+        fotoId: j['fotoId'] as String,
+        numeroEnRollo: j['numeroEnRollo'] as int,
+        rollo: Rollo.fromJson(j['rollo'] as Map<String, dynamic>),
+      );
+}

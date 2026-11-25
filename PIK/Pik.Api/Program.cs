@@ -56,6 +56,17 @@ builder.Services.AddSingleton<IAlmacenamientoFotos, AlmacenamientoLocal>();
 builder.Services.Configure<ReveladoOptions>(builder.Configuration.GetSection("Revelado"));
 builder.Services.AddHostedService<ReveladoWorker>();
 
+// ---------- CORS ----------
+// Permite que la app de Flutter en el navegador (Chrome) llame a la API.
+// Las apps nativas (Android/iOS) no necesitan CORS.
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("PikApp", politica => politica
+        .AllowAnyOrigin()
+        .AllowAnyHeader()
+        .AllowAnyMethod());
+});
+
 // ---------- Controladores ----------
 builder.Services
     .AddControllers()
@@ -72,6 +83,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors("PikApp");
 
 app.UseAuthentication(); // ¿quién eres? (lee el JWT)
 app.UseAuthorization();  // ¿puedes hacer esto? ([Authorize])

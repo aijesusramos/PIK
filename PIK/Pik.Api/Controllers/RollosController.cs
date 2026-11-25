@@ -72,7 +72,7 @@ public class RollosController(PikDbContext db, RolloService rollos) : Controller
         return Ok(RolloRespuesta.Desde(dato.Rollo, dato.Fotos));
     }
 
-    /// <summary>Cierre manual: el rollo pasa a Revelando, o a En cola si ya hay 3 revelándose.</summary>
+    /// <summary>Cierre manual: el rollo pasa a Revelando, o a En cola si ya hay 2 revelándose.</summary>
     [HttpPost("{id:guid}/cerrar")]
     public async Task<ActionResult<RolloRespuesta>> Cerrar(Guid id)
     {

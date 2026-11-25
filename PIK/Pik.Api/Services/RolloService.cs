@@ -123,7 +123,7 @@ public class RolloService(
     // ---------- Cerrar ----------
 
     /// <summary>
-    /// Cierra un rollo Activo (lleno o cierre manual). Si el usuario tiene menos de 3
+    /// Cierra un rollo Activo (lleno o cierre manual). Si el usuario tiene menos de 2
     /// rollos revelándose, empieza a revelarse; si no, queda En cola.
     /// </summary>
     public async Task CerrarAsync(Rollo rollo)
@@ -156,7 +156,7 @@ public class RolloService(
 
     /// <summary>
     /// 1) Marca como Revelado todo rollo cuyo tiempo ya terminó y crea su notificación.
-    /// 2) Para cada usuario con rollos En cola, inicia los que quepan (máximo 3 revelándose).
+    /// 2) Para cada usuario con rollos En cola, inicia los que quepan (máximo 2 revelándose).
     /// Devuelve cuántos rollos se revelaron.
     /// </summary>
     public async Task<int> ProcesarReveladosAsync(DateTime ahoraUtc)
@@ -231,7 +231,7 @@ public class RolloService(
     /// Abre una transacción solo si no hay una en curso. Así CerrarAsync puede llamarse sola
     /// o desde AgregarFotoAsync sin anidar transacciones (SQLite no lo permite).
     /// En SQLite la transacción toma el bloqueo de escritura desde el inicio, por eso
-    /// dos peticiones simultáneas no pueden saltarse los límites de 2 y 3.
+    /// dos peticiones simultáneas no pueden saltarse los límites de 1 activo y 2 revelando.
     /// </summary>
     private async Task<IDbContextTransaction?> IniciarTransaccionAsync() =>
         db.Database.CurrentTransaction is null

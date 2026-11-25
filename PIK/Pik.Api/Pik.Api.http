@@ -7,9 +7,9 @@ POST {{host}}/api/auth/registro
 Content-Type: application/json
 
 {
-  "email": "prueba@pik.com",
-  "nombreUsuario": "prueba",
-  "password": "Prueba123!"
+  "email": "prueba2@pik.com",
+  "nombreUsuario": "prueba2",
+  "password": "Prueba1234!"
 }
 
 ### 2. Login (copia el "token" de la respuesta y pégalo abajo en @token)
@@ -17,12 +17,13 @@ POST {{host}}/api/auth/login
 Content-Type: application/json
 
 {
-  "email": "prueba@pik.com",
-  "password": "Prueba123!"
+  "email": "prueba2@pik.com",
+  "password": "Prueba1234!"
 }
 
 ###
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJQaWsuQXBwIiwiaXNzIjoiUGlrLkFwaSIsImV4cCI6MTc5NTYzMzY5OSwic3ViIjoiNmU3MmU0YTUtOWI3Yi00YjNiLTkyNDktYjcyZDQ3Mjk1M2NkIiwiZW1haWwiOiJwcnVlYmFAcGlrLmNvbSIsIm5vbWJyZV91c3VhcmlvIjoicHJ1ZWJhIiwiaWF0IjoxNzk1NTQ3Mjk5LCJuYmYiOjE3OTU1NDcyOTl9._dbF28Ic37E3VSAsAwe141c9OR1ZXG__NoiIQNrE210
+@token = Token aqui
+  "expiraUtc": "2026-11-26T22:03:57.5798699Z
 
 ### 3. ¿Quién soy? (prueba que el token funciona)
 GET {{host}}/api/auth/yo
@@ -48,7 +49,7 @@ Authorization: Bearer {{token}}
 
 ### ================= PASO 4: FOTOS Y REVELADO =================
 ### Pega aquí el id de un rollo Activo (sale en la respuesta de la petición 4 o 6)
-@rolloId = a0504f29-92a9-47d8-bf9a-7aa1b0a508fd
+@rolloId = RolloID aqui
 
 ### 7. Subir una foto al rollo
 ### Necesitas el archivo prueba.jpeg en la carpeta Pik.Api (junto a este archivo).
@@ -83,7 +84,7 @@ POST {{host}}/api/rollos/{{rolloId}}/cerrar
 Authorization: Bearer {{token}}
 
 ### Pega aquí el id de una foto (sale en "fotoId" de la petición 7)
-@fotoId = 026c63b6-4224-4dd8-921d-bd605a608b5e
+@fotoId = FotoID aqui
 
 ### 10. Ver la imagen -> 423 Locked mientras se revela; la imagen cuando ya está revelada
 GET {{host}}/api/fotos/{{fotoId}}/archivo

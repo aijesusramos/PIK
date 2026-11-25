@@ -10,7 +10,7 @@ public static class ReglasRollo
     public const int MaxRollosActivos = 1;
 
     /// <summary>Rollos en estado Revelando que un usuario puede tener al mismo tiempo.</summary>
-    public const int MaxRollosRevelando = 3;
+    public const int MaxRollosRevelando = 2;
 
     /// <summary>
     /// Tiempo de revelado según la capacidad del rollo. Depende de la capacidad,

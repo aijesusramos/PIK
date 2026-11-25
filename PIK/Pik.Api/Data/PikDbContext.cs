@@ -48,7 +48,7 @@ public class PikDbContext : DbContext
              .HasForeignKey(r => r.UsuarioId)
              .OnDelete(DeleteBehavior.Cascade);
 
-            // Contar rollos Activos / Revelando de un usuario (reglas de 2 y 3).
+            // Contar rollos Activos / Revelando de un usuario (reglas de 1 y 2).
             e.HasIndex(r => new { r.UsuarioId, r.Estado });
 
             // Tarea en segundo plano: revelados que ya terminaron y cola por orden de cierre.

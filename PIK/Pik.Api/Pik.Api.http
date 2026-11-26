@@ -30,13 +30,15 @@ GET {{host}}/api/auth/yo
 Authorization: Bearer {{token}}
 
 ### 4. Crear un rollo (filtro: Original | BlancoNegro | RedBlue; capacidad: 6 | 12 | 24)
+### "titulo" es opcional (máx. 40): si no se manda, se llama "Rollo N".
 POST {{host}}/api/rollos
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
   "filtro": "Original",
-  "capacidad": 6
+  "capacidad": 6,
+  "titulo": "Vacaciones en la playa"
 }
 
 ### 5. Listar mis rollos
@@ -78,6 +80,15 @@ Content-Disposition: form-data; name="alto"
 ### Después: "bloqueado": false y la lista con la URL de cada foto.
 GET {{host}}/api/rollos/{{rolloId}}/fotos
 Authorization: Bearer {{token}}
+
+### 9b. Cambiar el título del rollo (lo único que se puede cambiar después de crearlo)
+PATCH {{host}}/api/rollos/{{rolloId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "titulo": "Cumpleaños de Ana"
+}
 
 ### 9. Cerrar el rollo manualmente (si no lo llenaste)
 POST {{host}}/api/rollos/{{rolloId}}/cerrar

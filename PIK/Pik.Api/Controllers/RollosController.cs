@@ -28,7 +28,8 @@ public class RollosController(PikDbContext db, RolloService rollos) : Controller
             var rollo = await rollos.CrearAsync(
                 User.ObtenerUsuarioId(),
                 solicitud.Filtro,
-                (CapacidadRollo)solicitud.Capacidad);
+                (CapacidadRollo)solicitud.Capacidad,
+                solicitud.Titulo);
 
             return CreatedAtAction(nameof(Obtener), new { id = rollo.Id }, RolloRespuesta.Desde(rollo, 0));
         }
@@ -70,6 +71,28 @@ public class RollosController(PikDbContext db, RolloService rollos) : Controller
         if (dato is null) return NotFound(new ErrorRespuesta("Rollo no encontrado."));
 
         return Ok(RolloRespuesta.Desde(dato.Rollo, dato.Fotos));
+    }
+
+    /// <summary>Cambia el título del rollo (lo único que se puede cambiar después de crearlo).</summary>
+    [HttpPatch("{id:guid}")]
+    public async Task<ActionResult<RolloRespuesta>> Renombrar(Guid id, RenombrarRolloSolicitud solicitud)
+    {
+        var usuarioId = User.ObtenerUsuarioId();
+        var rollo = await db.Rollos.FirstOrDefaultAsync(r => r.Id == id && r.UsuarioId == usuarioId);
+        if (rollo is null) return NotFound(new ErrorRespuesta("Rollo no encontrado."));
+
+        try
+        {
+            await rollos.RenombrarAsync(rollo, solicitud.Titulo);
+        }
+        catch (ReglaNegocioException ex)
+        {
+            // Título vacío (solo espacios): es un dato inválido, no un conflicto.
+            return BadRequest(new ErrorRespuesta(ex.Message));
+        }
+
+        var fotos = await db.Fotos.CountAsync(f => f.RolloId == rollo.Id);
+        return Ok(RolloRespuesta.Desde(rollo, fotos));
     }
 
     /// <summary>Cierre manual: el rollo pasa a Revelando, o a En cola si ya hay 2 revelándose.</summary>

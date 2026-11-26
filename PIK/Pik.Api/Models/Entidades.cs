@@ -23,6 +23,9 @@ public class Rollo
     public Guid UsuarioId { get; set; }
     public Usuario Usuario { get; set; } = null!;
 
+    /// <summary>Nombre que el usuario le da al rollo. Es lo único que se puede cambiar después.</summary>
+    public string Titulo { get; set; } = string.Empty;
+
     // Se fijan al crear el rollo y no cambian.
     public FiltroRollo Filtro { get; set; }
     public CapacidadRollo Capacidad { get; set; }

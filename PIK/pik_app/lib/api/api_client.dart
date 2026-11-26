@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
@@ -37,6 +38,19 @@ class ApiClient {
     return _procesar(respuesta);
   }
 
+  /// Descarga un archivo (por ejemplo, una foto) con el JWT y devuelve sus bytes.
+  /// Las fotos están protegidas: un Image.network normal no envía el token y la API
+  /// respondería 401, por eso se descargan aquí.
+  Future<Uint8List> getBytes(String ruta) async {
+    final r = await _enviar(
+      () => _client.get(_uri(ruta), headers: _headers(json: false)),
+      limite: const Duration(seconds: 60),
+    );
+    if (r.statusCode >= 200 && r.statusCode < 300) return r.bodyBytes;
+    // Los errores sí vienen en JSON ({ "mensaje": ... }), como en las demás rutas.
+    _lanzarError(r);
+  }
+
   Future<dynamic> post(String ruta, [Object? cuerpo]) async {
     final respuesta = await _enviar(
       () => _client.post(
@@ -44,6 +58,13 @@ class ApiClient {
         headers: _headers(),
         body: cuerpo == null ? null : jsonEncode(cuerpo),
       ),
+    );
+    return _procesar(respuesta);
+  }
+
+  Future<dynamic> patch(String ruta, Object cuerpo) async {
+    final respuesta = await _enviar(
+      () => _client.patch(_uri(ruta), headers: _headers(), body: jsonEncode(cuerpo)),
     );
     return _procesar(respuesta);
   }
@@ -105,20 +126,23 @@ class ApiClient {
   }
 
   dynamic _procesar(http.Response r) {
-    dynamic cuerpo;
-    if (r.bodyBytes.isNotEmpty) {
-      try {
-        cuerpo = jsonDecode(utf8.decode(r.bodyBytes));
-      } catch (_) {
-        cuerpo = null;
-      }
+    if (r.statusCode >= 200 && r.statusCode < 300) return _decodificar(r);
+    _lanzarError(r);
+  }
+
+  dynamic _decodificar(http.Response r) {
+    if (r.bodyBytes.isEmpty) return null;
+    try {
+      return jsonDecode(utf8.decode(r.bodyBytes));
+    } catch (_) {
+      return null;
     }
+  }
 
-    if (r.statusCode >= 200 && r.statusCode < 300) return cuerpo;
-
+  /// `Never`: esta función siempre lanza una excepción, nunca regresa normalmente.
+  Never _lanzarError(http.Response r) {
     if (r.statusCode == 401 && token != null) onNoAutorizado?.call();
-
-    throw ApiException(r.statusCode, _mensajeDeError(r.statusCode, cuerpo));
+    throw ApiException(r.statusCode, _mensajeDeError(r.statusCode, _decodificar(r)));
   }
 
   String _mensajeDeError(int statusCode, dynamic cuerpo) {

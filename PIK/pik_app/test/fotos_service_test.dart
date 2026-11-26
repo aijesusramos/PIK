@@ -13,6 +13,7 @@ import 'package:pik_app/services/fotos_service.dart';
 /// JSON de un rollo como lo devuelve la API.
 Map<String, dynamic> rolloJson({required String estado, required int tomadas}) => {
       'id': 'rollo-1',
+      'titulo': 'Rollo 1',
       'filtro': 'RedBlue',
       'capacidad': 6,
       'estado': estado,

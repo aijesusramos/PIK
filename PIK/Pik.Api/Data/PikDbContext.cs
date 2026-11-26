@@ -48,6 +48,8 @@ public class PikDbContext : DbContext
              .HasForeignKey(r => r.UsuarioId)
              .OnDelete(DeleteBehavior.Cascade);
 
+            e.Property(r => r.Titulo).HasMaxLength(ReglasRollo.MaxLargoTitulo).IsRequired();
+
             // Contar rollos Activos / Revelando de un usuario (reglas de 1 y 2).
             e.HasIndex(r => new { r.UsuarioId, r.Estado });
 

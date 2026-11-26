@@ -12,6 +12,22 @@ public static class ReglasRollo
     /// <summary>Rollos en estado Revelando que un usuario puede tener al mismo tiempo.</summary>
     public const int MaxRollosRevelando = 2;
 
+    /// <summary>Largo máximo del título de un rollo.</summary>
+    public const int MaxLargoTitulo = 40;
+
+    /// <summary>
+    /// Título por defecto cuando el usuario no escribe uno: "Rollo 1", "Rollo 2"...
+    /// según cuántos rollos ha creado.
+    /// </summary>
+    public static string TituloPorDefecto(int rollosCreados) => $"Rollo {rollosCreados + 1}";
+
+    /// <summary>Quita espacios al inicio y al final. Devuelve null si queda vacío.</summary>
+    public static string? LimpiarTitulo(string? titulo)
+    {
+        var limpio = titulo?.Trim();
+        return string.IsNullOrEmpty(limpio) ? null : limpio;
+    }
+
     /// <summary>
     /// Tiempo de revelado según la capacidad del rollo. Depende de la capacidad,
     /// no de las fotos tomadas: un rollo de 24 cerrado con 10 fotos tarda 12 h.

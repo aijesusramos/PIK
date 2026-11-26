@@ -27,12 +27,18 @@ public record UsuarioRespuesta(Guid Id, string Email, string NombreUsuario);
 
 // ---------- Rollos ----------
 
+/// <param name="Titulo">Opcional. Si viene vacío, el rollo se llama "Rollo N".</param>
 public record CrearRolloSolicitud(
     [Required] FiltroRollo Filtro,
-    [Required] int Capacidad);
+    [Required] int Capacidad,
+    [MaxLength(ReglasRollo.MaxLargoTitulo)] string? Titulo = null);
+
+public record RenombrarRolloSolicitud(
+    [Required, MaxLength(ReglasRollo.MaxLargoTitulo)] string Titulo);
 
 public record RolloRespuesta(
     Guid Id,
+    string Titulo,
     FiltroRollo Filtro,
     int Capacidad,
     EstadoRollo Estado,
@@ -46,6 +52,7 @@ public record RolloRespuesta(
 {
     public static RolloRespuesta Desde(Rollo r, int fotosTomadas) => new(
         r.Id,
+        r.Titulo,
         r.Filtro,
         (int)r.Capacidad,
         r.Estado,

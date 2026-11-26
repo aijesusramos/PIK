@@ -1,5 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Guardar fotos en la galería (paquete gal). Solo hace falta hasta Android 10. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+
     <application
+        android:requestLegacyExternalStorage="true"
         android:label="pik_app"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">

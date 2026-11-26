@@ -9,54 +9,73 @@ import '../api/api_client.dart';
 import '../filtros/filtros.dart';
 import '../models/modelos.dart';
 import '../services/fotos_service.dart';
+import '../services/mis_rollos.dart';
 import '../theme.dart';
+import '../widgets/panel_rollo.dart';
 import '../widgets/tarjeta_rollo.dart';
+import 'nuevo_rollo_screen.dart';
 
-/// Cámara de un rollo Activo.
+/// Pantalla principal: la cámara.
 ///
-/// Como en una cámara de rollo, **la foto no se muestra al tomarla**: solo avanza el
-/// contador. Se verá hasta que el rollo se revele.
+///   ┌──────────────────────────────┐
+///   │        Título · 07/12    [▦] │  ← ▦ abre la galería (también deslizando)
+///   │           (visor)            │
+///   │ [⚡][⟲]     ( ◉ )      [rollo]│  ← rollo activo, o + para crear uno
+///   └──────────────────────────────┘
 ///
-/// Flujo de cada disparo:
-///   capturar → aplicar el filtro del rollo → subir a la API → avanzar el contador.
-/// Mientras eso pasa el obturador queda bloqueado ("avanzando la película"), así
-/// las fotos se suben una por una y en orden.
+/// Como en una cámara de rollo, **la foto no se muestra al tomarla**: solo avanza
+/// el contador. Cada disparo: capturar → aplicar el filtro → subir → avanzar.
+/// Mientras eso pasa el obturador queda bloqueado ("avanzando la película").
 class CamaraScreen extends StatefulWidget {
-  const CamaraScreen({super.key, required this.rollo});
+  const CamaraScreen({super.key, required this.visible, required this.onAbrirGaleria});
 
-  final Rollo rollo;
+  /// false cuando el usuario está en la galería: la cámara se apaga.
+  final bool visible;
+  final VoidCallback onAbrirGaleria;
 
   @override
   State<CamaraScreen> createState() => _CamaraScreenState();
 }
 
-class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver {
-  late Rollo _rollo;
+class _CamaraScreenState extends State<CamaraScreen>
+    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
+  // AutomaticKeepAlive: al deslizar a la galería, esta página no se destruye
+  // (se conserva, por ejemplo, una foto pendiente de subir).
+  @override
+  bool get wantKeepAlive => true;
 
   List<CameraDescription> _camaras = [];
   int _indiceCamara = 0;
   CameraController? _controlador;
   String? _errorCamara;
+  bool _appEnPrimerPlano = true;
 
-  /// Procesando y subiendo la última foto.
+  FlashMode _flash = FlashMode.off;
+
+  /// En web las webcams no tienen flash, y activarlo puede hacer fallar la foto.
+  final bool _flashDisponible = !kIsWeb;
+
   bool _avanzando = false;
-
-  /// Destello blanco al disparar.
   bool _destello = false;
 
   /// Foto que no se pudo subir (sin red, API apagada...). Se puede reintentar.
   FotoProcesada? _pendiente;
   DateTime? _fechaPendiente;
+  String? _rolloPendiente;
 
-  /// Se tomó al menos una foto: al volver, la pantalla de inicio debe recargar.
-  bool _huboCambios = false;
+  bool get _debeEstarAbierta => widget.visible && _appEnPrimerPlano;
 
   @override
   void initState() {
     super.initState();
-    _rollo = widget.rollo;
     WidgetsBinding.instance.addObserver(this);
-    _iniciarCamaras();
+    if (_debeEstarAbierta) _iniciarCamaras();
+  }
+
+  @override
+  void didUpdateWidget(CamaraScreen anterior) {
+    super.didUpdateWidget(anterior);
+    if (anterior.visible != widget.visible) _sincronizarCamara();
   }
 
   @override
@@ -66,18 +85,31 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
     super.dispose();
   }
 
-  /// En el teléfono, al salir de la app se libera la cámara (otras apps la pueden
-  /// necesitar) y al volver se abre de nuevo. En web no hace falta.
+  /// En el teléfono, al salir de la app se libera la cámara y al volver se abre de nuevo.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (kIsWeb) return;
+    if (kIsWeb) return; // en web cambia de estado solo con cambiar de pestaña o ventana
     if (state == AppLifecycleState.inactive) {
+      _appEnPrimerPlano = false;
+    } else if (state == AppLifecycleState.resumed) {
+      _appEnPrimerPlano = true;
+    } else {
+      return;
+    }
+    _sincronizarCamara();
+  }
+
+  /// Abre o cierra la cámara según si se está viendo.
+  void _sincronizarCamara() {
+    if (_debeEstarAbierta) {
+      if (_controlador == null) {
+        _camaras.isEmpty ? _iniciarCamaras() : _abrirCamara();
+      }
+    } else {
       final c = _controlador;
       if (c == null) return;
       setState(() => _controlador = null);
       c.dispose();
-    } else if (state == AppLifecycleState.resumed) {
-      if (_controlador == null && _camaras.isNotEmpty) _abrirCamara();
     }
   }
 
@@ -95,7 +127,6 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
       if (mounted) setState(() => _errorCamara = 'No se encontró ninguna cámara en este dispositivo.');
       return;
     }
-    // Se prefiere la cámara trasera.
     final trasera = _camaras.indexWhere((c) => c.lensDirection == CameraLensDirection.back);
     _indiceCamara = trasera >= 0 ? trasera : 0;
     await _abrirCamara();
@@ -105,6 +136,7 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
     final anterior = _controlador;
     if (mounted) setState(() => _controlador = null);
     await anterior?.dispose();
+    if (!_debeEstarAbierta) return; // se cambió de página mientras tanto
 
     final c = CameraController(
       _camaras[_indiceCamara],
@@ -118,10 +150,12 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
       if (mounted) setState(() => _errorCamara = _mensajeCamara(e));
       return;
     }
-    if (!mounted) {
+    if (!mounted || !_debeEstarAbierta) {
       await c.dispose();
       return;
     }
+    // Android empieza con el flash en automático: se fija el modo elegido.
+    if (_flashDisponible) await _aplicarFlash(c, _flash, avisar: false);
     setState(() {
       _controlador = c;
       _errorCamara = null;
@@ -132,6 +166,29 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
     if (_camaras.length < 2 || _avanzando) return;
     _indiceCamara = (_indiceCamara + 1) % _camaras.length;
     await _abrirCamara();
+  }
+
+  /// Apagado → automático → siempre → apagado...
+  Future<void> _cambiarFlash() async {
+    final c = _controlador;
+    if (c == null) return;
+    final siguiente = switch (_flash) {
+      FlashMode.off => FlashMode.auto,
+      FlashMode.auto => FlashMode.always,
+      _ => FlashMode.off,
+    };
+    await _aplicarFlash(c, siguiente, avisar: true);
+  }
+
+  Future<void> _aplicarFlash(CameraController c, FlashMode modo, {required bool avisar}) async {
+    try {
+      await c.setFlashMode(modo);
+      if (mounted) setState(() => _flash = modo);
+    } on Exception {
+      // Por ejemplo, la cámara frontal de muchos teléfonos no tiene flash.
+      if (mounted) setState(() => _flash = FlashMode.off);
+      if (avisar) _mostrarMensaje('Esta cámara no tiene flash.');
+    }
   }
 
   String _mensajeCamara(CameraException e) => switch (e.code) {
@@ -148,23 +205,43 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
         _ => 'No se pudo abrir la cámara (${e.description ?? e.code}).',
       };
 
+  // ---------- Rollo ----------
+
+  Future<void> _tocarRollo(MisRollos misRollos) async {
+    final activo = misRollos.activo;
+    if (activo != null) {
+      await mostrarPanelRollo(context, misRollos, activo);
+    } else {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => NuevoRolloScreen(misRollos: misRollos)),
+      );
+    }
+  }
+
   // ---------- Disparo ----------
 
-  bool get _puedeDisparar {
+  bool _listaParaDisparar(Rollo? rollo) {
     final c = _controlador;
-    return c != null &&
+    return rollo != null &&
+        rollo.fotosRestantes > 0 &&
+        c != null &&
         c.value.isInitialized &&
         !c.value.isTakingPicture &&
         !_avanzando &&
-        _pendiente == null &&
-        _rollo.estado == EstadoRollo.activo &&
-        _rollo.fotosRestantes > 0;
+        _pendiente == null;
   }
 
   Future<void> _disparar() async {
-    if (!_puedeDisparar) return;
+    final misRollos = context.read<MisRollos>();
+    final fotos = context.read<FotosService>();
+    final rollo = misRollos.activo;
+
+    if (rollo == null) {
+      _mostrarMensaje('Primero crea un rollo: toca el botón + de la derecha.');
+      return;
+    }
+    if (!_listaParaDisparar(rollo)) return;
     final c = _controlador!;
-    final fotos = context.read<FotosService>(); // antes de cualquier await
 
     setState(() {
       _avanzando = true;
@@ -178,12 +255,10 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
       final archivo = await c.takePicture();
       final fecha = DateTime.now().toUtc();
       final bytes = await archivo.readAsBytes();
-
       // En el teléfono, compute procesa la foto en otro hilo (isolate) para que
       // la interfaz no se congele. En web corre en el mismo hilo.
-      final foto = await compute(procesarFoto, (bytes, _rollo.filtro));
-
-      await _subir(fotos, foto, fecha);
+      final foto = await compute(procesarFoto, (bytes, rollo.filtro));
+      await _subir(misRollos, fotos, rollo, foto, fecha);
     } on CameraException catch (e) {
       _mostrarMensaje('No se pudo tomar la foto (${e.description ?? e.code}).');
     } on FormatException catch (e) {
@@ -194,13 +269,21 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
   }
 
   Future<void> _reintentar() async {
+    final misRollos = context.read<MisRollos>();
+    final fotos = context.read<FotosService>();
     final foto = _pendiente;
     final fecha = _fechaPendiente;
+    final rollo = misRollos.activo;
     if (foto == null || fecha == null || _avanzando) return;
-    final fotos = context.read<FotosService>();
+    if (rollo == null || rollo.id != _rolloPendiente) {
+      // El rollo ya no está activo: la foto ya no tiene dónde guardarse.
+      _descartarPendiente();
+      _mostrarMensaje('El rollo de esa foto ya se cerró.');
+      return;
+    }
     setState(() => _avanzando = true);
     try {
-      await _subir(fotos, foto, fecha);
+      await _subir(misRollos, fotos, rollo, foto, fecha);
     } finally {
       if (mounted) setState(() => _avanzando = false);
     }
@@ -209,120 +292,116 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
   void _descartarPendiente() => setState(() {
         _pendiente = null;
         _fechaPendiente = null;
+        _rolloPendiente = null;
       });
 
-  Future<void> _subir(FotosService fotos, FotoProcesada foto, DateTime fecha) async {
+  Future<void> _subir(
+    MisRollos misRollos,
+    FotosService fotos,
+    Rollo rollo,
+    FotoProcesada foto,
+    DateTime fecha,
+  ) async {
     try {
-      final subida = await fotos.subir(_rollo.id, foto, fecha);
+      final subida = await fotos.subir(rollo.id, foto, fecha);
+      misRollos.actualizar(subida.rollo); // la galería también se entera
       if (!mounted) return;
-      setState(() {
-        _rollo = subida.rollo;
-        _pendiente = null;
-        _fechaPendiente = null;
-        _huboCambios = true;
-      });
+      _descartarPendiente();
       // Era la última foto: la API ya cerró el rollo.
-      if (subida.rollo.estado != EstadoRollo.activo) await _rolloCompleto();
+      if (subida.rollo.estado != EstadoRollo.activo) await _rolloCompleto(subida.rollo);
     } on ApiException catch (e) {
       if (!mounted) return;
       if (e.statusCode == 409) {
         // El rollo ya no acepta fotos (se cerró o se llenó desde otro lado).
         _descartarPendiente();
-        await _avisar('No se guardó la foto', e.mensaje);
-        if (mounted) Navigator.of(context).pop(true);
+        misRollos.cargar();
+        _mostrarMensaje('No se guardó la foto: ${e.mensaje}');
         return;
       }
-      // Error de red o del servidor: se guarda para reintentar.
       setState(() {
         _pendiente = foto;
         _fechaPendiente = fecha;
+        _rolloPendiente = rollo.id;
       });
       _mostrarMensaje('No se pudo guardar la foto: ${e.mensaje}');
     }
   }
 
-  Future<void> _rolloCompleto() async {
-    final mensaje = _rollo.estado == EstadoRollo.enCola
-        ? 'Ya tienes 2 rollos revelándose, así que este quedó en cola. '
-            'Empezará a revelarse solo cuando termine uno '
-            '(tardará ${_rollo.horasRevelado} h).'
-        : 'Ya está en el cuarto oscuro. Tus fotos estarán listas en '
-            '${_rollo.horasRevelado} h.';
-    await _avisar('¡Rollo completo!', mensaje);
-    if (mounted) Navigator.of(context).pop(true);
+  Future<void> _rolloCompleto(Rollo rollo) {
+    final mensaje = rollo.estado == EstadoRollo.enCola
+        ? 'Ya tienes 2 rollos revelándose, así que "${rollo.titulo}" quedó en cola. '
+            'Empezará a revelarse solo cuando termine uno (tardará ${rollo.horasRevelado} h).'
+        : '"${rollo.titulo}" ya está en el cuarto oscuro. Tus fotos estarán listas en '
+            '${rollo.horasRevelado} h.';
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¡Rollo completo!'),
+        content: Text(mensaje),
+        actions: [
+          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido')),
+        ],
+      ),
+    );
   }
-
-  Future<void> _avisar(String titulo, String mensaje) => showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: Text(titulo),
-          content: Text(mensaje),
-          actions: [
-            FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido')),
-          ],
-        ),
-      );
 
   void _mostrarMensaje(String texto) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(texto)));
   }
 
   // ---------- Interfaz ----------
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_avanzando, // no salir a media subida
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _avanzando) _mostrarMensaje('Espera a que se guarde la foto.');
-      },
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: SafeArea(
-          child: Column(
-            children: [
-              _barraSuperior(),
-              Expanded(child: Center(child: _visor())),
-              if (_pendiente != null) _avisoPendiente(),
-              _barraInferior(),
-            ],
-          ),
+    super.build(context); // requerido por AutomaticKeepAliveClientMixin
+    final misRollos = context.watch<MisRollos>();
+    final activo = misRollos.activo;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _barraSuperior(activo),
+            Expanded(child: Center(child: _visor(activo))),
+            if (_pendiente != null) _avisoPendiente(),
+            _barraInferior(misRollos, activo),
+          ],
         ),
       ),
     );
   }
 
-  Widget _barraSuperior() {
+  Widget _barraSuperior(Rollo? activo) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         children: [
-          IconButton(
-            tooltip: 'Salir',
-            color: Colors.white,
-            icon: const Icon(Icons.close),
-            onPressed: _avanzando ? null : () => Navigator.of(context).pop(_huboCambios),
+          const SizedBox(width: 48),
+          Expanded(
+            child: activo == null
+                ? const Text(
+                    'Sin rollo',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white54),
+                  )
+                : _ContadorFotos(rollo: activo),
           ),
-          const Spacer(),
-          _ContadorFotos(rollo: _rollo),
-          const Spacer(),
-          if (_camaras.length > 1)
-            IconButton(
-              tooltip: 'Cambiar cámara',
-              color: Colors.white,
-              icon: const Icon(Icons.cameraswitch_outlined),
-              onPressed: _avanzando ? null : _cambiarCamara,
-            )
-          else
-            const SizedBox(width: 48),
+          IconButton(
+            tooltip: 'Mis rollos',
+            color: Colors.white,
+            icon: const Icon(Icons.photo_library_outlined),
+            onPressed: widget.onAbrirGaleria,
+          ),
         ],
       ),
     );
   }
 
-  Widget _visor() {
+  Widget _visor(Rollo? activo) {
     if (_errorCamara != null) {
       return Padding(
         padding: const EdgeInsets.all(32),
@@ -344,9 +423,9 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
       return const CircularProgressIndicator();
     }
 
-    // La vista previa ya muestra el filtro del rollo, con la misma matriz que se
-    // aplicará a la foto final.
-    final matriz = matrizDeFiltro(_rollo.filtro);
+    // La vista previa muestra el filtro del rollo activo (en el teléfono; en web
+    // el navegador no lo permite). Sin rollo, se ve normal.
+    final matriz = activo == null ? null : matrizDeFiltro(activo.filtro);
     Widget vista = CameraPreview(c);
     if (matriz != null) {
       vista = ColorFiltered(colorFilter: ColorFilter.matrix(matriz), child: vista);
@@ -378,10 +457,7 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white10,
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)),
       child: Row(
         children: [
           const Icon(Icons.cloud_off, color: Colors.white70, size: 20),
@@ -396,36 +472,55 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
     );
   }
 
-  Widget _barraInferior() {
+  Widget _barraInferior(MisRollos misRollos, Rollo? activo) {
+    final hayCamara = _controlador?.value.isInitialized ?? false;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       child: Row(
         children: [
+          // Izquierda: controles de la cámara.
           Expanded(
             child: Row(
               children: [
-                MuestraFiltro(filtro: _rollo.filtro, tamano: 28),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    _rollo.filtro.nombre,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white70),
+                if (_flashDisponible)
+                  IconButton(
+                    tooltip: switch (_flash) {
+                      FlashMode.auto => 'Flash automático',
+                      FlashMode.always => 'Flash encendido',
+                      _ => 'Flash apagado',
+                    },
+                    color: Colors.white,
+                    onPressed: hayCamara && !_avanzando ? _cambiarFlash : null,
+                    icon: Icon(switch (_flash) {
+                      FlashMode.auto => Icons.flash_auto,
+                      FlashMode.always => Icons.flash_on,
+                      _ => Icons.flash_off,
+                    }),
                   ),
-                ),
+                if (_camaras.length > 1)
+                  IconButton(
+                    tooltip: 'Cambiar cámara',
+                    color: Colors.white,
+                    onPressed: _avanzando ? null : _cambiarCamara,
+                    icon: const Icon(Icons.cameraswitch_outlined),
+                  ),
               ],
             ),
           ),
           _Obturador(
-            habilitado: _puedeDisparar,
+            habilitado: _listaParaDisparar(activo),
             avanzando: _avanzando,
             onPressed: _disparar,
           ),
+          // Derecha: el rollo activo, o + para crear uno.
           Expanded(
-            child: Text(
-              _avanzando ? 'Avanzando…' : '',
-              textAlign: TextAlign.end,
-              style: const TextStyle(color: Colors.white70),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _BotonRollo(
+                rollo: activo,
+                cargando: misRollos.cargando,
+                onPressed: _avanzando ? null : () => _tocarRollo(misRollos),
+              ),
             ),
           ),
         ],
@@ -434,7 +529,7 @@ class _CamaraScreenState extends State<CamaraScreen> with WidgetsBindingObserver
   }
 }
 
-/// Contador de fotos al estilo de una cámara de rollo: "07 / 12".
+/// Título del rollo y contador de fotos al estilo de una cámara de rollo: "07 / 12".
 class _ContadorFotos extends StatelessWidget {
   const _ContadorFotos({required this.rollo});
 
@@ -446,6 +541,12 @@ class _ContadorFotos extends StatelessWidget {
     return Column(
       children: [
         Text(
+          rollo.titulo,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
+        ),
+        Text(
           '$tomadas / ${rollo.capacidad}',
           style: const TextStyle(
             color: colorAcento,
@@ -455,11 +556,72 @@ class _ContadorFotos extends StatelessWidget {
             letterSpacing: 2,
           ),
         ),
-        Text(
-          rollo.fotosRestantes == 1 ? 'queda 1' : 'quedan ${rollo.fotosRestantes}',
-          style: const TextStyle(color: Colors.white54, fontSize: 12),
-        ),
       ],
+    );
+  }
+}
+
+/// Botón del rollo (abajo a la derecha): muestra el filtro del rollo activo y
+/// cuántas fotos quedan; sin rollo es un "+" para crear uno.
+class _BotonRollo extends StatelessWidget {
+  const _BotonRollo({required this.rollo, required this.cargando, required this.onPressed});
+
+  final Rollo? rollo;
+  final bool cargando;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = rollo;
+    final Widget contenido;
+    if (r != null) {
+      contenido = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          MuestraFiltro(filtro: r.filtro, tamano: 52),
+          Positioned(
+            right: -6,
+            bottom: -6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(color: colorAcento, borderRadius: BorderRadius.circular(10)),
+              child: Text(
+                '${r.fotosRestantes}',
+                style: const TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (cargando) {
+      contenido = const SizedBox(
+        width: 52,
+        height: 52,
+        child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+      );
+    } else {
+      contenido = Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: colorAcento, width: 2),
+        ),
+        child: const Icon(Icons.add, color: colorAcento, size: 28),
+      );
+    }
+
+    return Tooltip(
+      message: r == null ? 'Nuevo rollo' : '${r.titulo}: quedan ${r.fotosRestantes}',
+      child: Semantics(
+        button: true,
+        label: r == null ? 'Crear un rollo nuevo' : 'Rollo ${r.titulo}',
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(padding: const EdgeInsets.all(6), child: contenido),
+        ),
+      ),
     );
   }
 }
@@ -479,7 +641,8 @@ class _Obturador extends StatelessWidget {
       label: 'Tomar foto',
       enabled: habilitado,
       child: GestureDetector(
-        onTap: habilitado ? onPressed : null,
+        // Se llama aunque esté deshabilitado: así puede explicar por qué (p. ej. sin rollo).
+        onTap: onPressed,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           width: 76,

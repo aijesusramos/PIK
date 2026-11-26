@@ -35,6 +35,9 @@ enum EstadoRollo {
 /// Capacidades permitidas y sus horas de revelado (igual que ReglasRollo.cs).
 const Map<int, int> horasPorCapacidad = {6: 3, 12: 6, 24: 12};
 
+/// Largo máximo del título de un rollo (ReglasRollo.MaxLargoTitulo).
+const maxLargoTitulo = 40;
+
 class Usuario {
   Usuario({required this.id, required this.email, required this.nombreUsuario});
 
@@ -52,6 +55,7 @@ class Usuario {
 class Rollo {
   Rollo({
     required this.id,
+    required this.titulo,
     required this.filtro,
     required this.capacidad,
     required this.estado,
@@ -65,6 +69,9 @@ class Rollo {
   });
 
   final String id;
+
+  /// Nombre que le dio el usuario (o "Rollo N" si no escribió uno).
+  final String titulo;
   final FiltroRollo filtro;
   final int capacidad;
   final EstadoRollo estado;
@@ -85,6 +92,7 @@ class Rollo {
 
   factory Rollo.fromJson(Map<String, dynamic> j) => Rollo(
         id: j['id'] as String,
+        titulo: j['titulo'] as String,
         filtro: FiltroRollo.desdeApi(j['filtro'] as String),
         capacidad: j['capacidad'] as int,
         estado: EstadoRollo.desdeApi(j['estado'] as String),
@@ -116,5 +124,63 @@ class FotoSubida {
         fotoId: j['fotoId'] as String,
         numeroEnRollo: j['numeroEnRollo'] as int,
         rollo: Rollo.fromJson(j['rollo'] as Map<String, dynamic>),
+      );
+}
+
+/// Una foto revelada (FotoRespuesta).
+class FotoInfo {
+  FotoInfo({
+    required this.id,
+    required this.numeroEnRollo,
+    required this.ancho,
+    required this.alto,
+    required this.fechaCaptura,
+    required this.urlArchivo,
+  });
+
+  final String id;
+  final int numeroEnRollo;
+  final int ancho;
+  final int alto;
+  final DateTime fechaCaptura;
+
+  /// Ruta relativa de la imagen en la API ("/api/fotos/{id}/archivo"). Requiere el JWT.
+  final String urlArchivo;
+
+  /// Nombre (sin extensión) al descargar: pik_01, pik_02... (igual que la API).
+  String get nombreArchivo => 'pik_${numeroEnRollo.toString().padLeft(2, '0')}';
+
+  factory FotoInfo.fromJson(Map<String, dynamic> j) => FotoInfo(
+        id: j['id'] as String,
+        numeroEnRollo: j['numeroEnRollo'] as int,
+        ancho: j['ancho'] as int,
+        alto: j['alto'] as int,
+        fechaCaptura: DateTime.parse(j['fechaCapturaUtc'] as String),
+        urlArchivo: j['urlArchivo'] as String,
+      );
+}
+
+/// Fotos de un rollo (FotosDeRolloRespuesta). Si [bloqueado] es true el rollo
+/// aún no se revela y [fotos] viene vacía.
+class FotosDeRollo {
+  FotosDeRollo({
+    required this.rollo,
+    required this.bloqueado,
+    required this.segundosRestantes,
+    required this.fotos,
+  });
+
+  final Rollo rollo;
+  final bool bloqueado;
+  final int? segundosRestantes;
+  final List<FotoInfo> fotos;
+
+  factory FotosDeRollo.fromJson(Map<String, dynamic> j) => FotosDeRollo(
+        rollo: Rollo.fromJson(j['rollo'] as Map<String, dynamic>),
+        bloqueado: j['bloqueado'] as bool,
+        segundosRestantes: j['segundosRestantes'] as int?,
+        fotos: (j['fotos'] as List<dynamic>)
+            .map((f) => FotoInfo.fromJson(f as Map<String, dynamic>))
+            .toList(),
       );
 }

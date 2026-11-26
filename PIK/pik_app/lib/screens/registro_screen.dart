@@ -37,7 +37,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
     });
     try {
       await context.read<AuthService>().registro(_email.text, _nombre.text, _password.text);
-      // Ya hay sesión: se cierra esta pantalla y main.dart muestra HomeScreen.
+      // Ya hay sesión: se cierra esta pantalla y main.dart muestra la cámara (InicioScreen).
       if (mounted) Navigator.of(context).pop();
     } on ApiException catch (e) {
       setState(() => _error = e.mensaje);

@@ -12,6 +12,7 @@ void main() {
   test('Rollo.fromJson lee el JSON de la API (enums como texto, fechas UTC)', () {
     final rollo = Rollo.fromJson({
       'id': '3f2a7c1e-0000-0000-0000-000000000001',
+      'titulo': 'Vacaciones',
       'filtro': 'BlancoNegro',
       'capacidad': 12,
       'estado': 'Revelando',
@@ -26,6 +27,7 @@ void main() {
       'otroCampo': true,
     });
 
+    expect(rollo.titulo, 'Vacaciones');
     expect(rollo.filtro, FiltroRollo.blancoNegro);
     expect(rollo.estado, EstadoRollo.revelando);
     expect(rollo.capacidad, 12);

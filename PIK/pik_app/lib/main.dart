@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import 'api/api_client.dart';
-import 'screens/home_screen.dart';
+import 'screens/inicio_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
 import 'services/fotos_service.dart';
@@ -37,13 +37,13 @@ class PikApp extends StatelessWidget {
       title: 'PIK',
       debugShowCheckedModeBanner: false,
       theme: temaPik,
-      // La pantalla inicial depende de la sesión: cargando, login o inicio.
+      // La pantalla inicial depende de la sesión: cargando, login o la cámara.
       home: Consumer<AuthService>(
         builder: (context, auth, _) {
           if (auth.cargando) {
             return const Scaffold(body: Center(child: CircularProgressIndicator()));
           }
-          return auth.autenticado ? const HomeScreen() : const LoginScreen();
+          return auth.autenticado ? const InicioScreen() : const LoginScreen();
         },
       ),
     );

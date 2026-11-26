@@ -41,7 +41,8 @@ public class RolloService(
 {
     // ---------- Crear ----------
 
-    public async Task<Rollo> CrearAsync(Guid usuarioId, FiltroRollo filtro, CapacidadRollo capacidad)
+    public async Task<Rollo> CrearAsync(
+        Guid usuarioId, FiltroRollo filtro, CapacidadRollo capacidad, string? titulo)
     {
         await using var tx = await IniciarTransaccionAsync();
 
@@ -52,9 +53,18 @@ public class RolloService(
             throw new ReglaNegocioException(
                 $"Ya tienes {ReglasRollo.MaxRollosActivos} rollos activos. Termina o cierra uno para crear otro.");
 
+        // Sin título: "Rollo N", contando todos los rollos que el usuario ha creado.
+        var tituloFinal = ReglasRollo.LimpiarTitulo(titulo);
+        if (tituloFinal is null)
+        {
+            var creados = await db.Rollos.CountAsync(r => r.UsuarioId == usuarioId);
+            tituloFinal = ReglasRollo.TituloPorDefecto(creados);
+        }
+
         var rollo = new Rollo
         {
             UsuarioId = usuarioId,
+            Titulo = tituloFinal,
             Filtro = filtro,
             Capacidad = capacidad,
             Estado = EstadoRollo.Activo
@@ -64,6 +74,16 @@ public class RolloService(
         await db.SaveChangesAsync();
         if (tx is not null) await tx.CommitAsync();
         return rollo;
+    }
+
+    // ---------- Renombrar ----------
+
+    /// <summary>Cambia el título. Se permite en cualquier estado: no afecta el revelado.</summary>
+    public async Task RenombrarAsync(Rollo rollo, string titulo)
+    {
+        rollo.Titulo = ReglasRollo.LimpiarTitulo(titulo)
+            ?? throw new ReglaNegocioException("El título no puede quedar vacío.");
+        await db.SaveChangesAsync();
     }
 
     // ---------- Agregar foto ----------
@@ -176,7 +196,7 @@ public class RolloService(
                 RolloId = rollo.Id,
                 Tipo = TipoNotificacion.RolloRevelado,
                 Titulo = "¡Tu rollo está listo!",
-                Mensaje = $"Tu rollo de {(int)rollo.Capacidad} fotos ya se reveló."
+                Mensaje = $"Tu rollo \"{rollo.Titulo}\" ya se reveló."
             });
         }
         await db.SaveChangesAsync();

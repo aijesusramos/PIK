@@ -3,22 +3,18 @@ import 'package:material_ui/material_ui.dart';
 import '../filtros/filtros.dart';
 import '../models/modelos.dart';
 import '../theme.dart';
+import '../utils/formato.dart';
 
-/// Tarjeta de un rollo en la pantalla principal.
+/// Tarjeta de un rollo en la galería de rollos.
 class TarjetaRollo extends StatelessWidget {
-  const TarjetaRollo({super.key, required this.rollo, this.onTap, this.onCerrar});
+  const TarjetaRollo({super.key, required this.rollo, this.onTap});
 
   final Rollo rollo;
   final VoidCallback? onTap;
 
-  /// Solo para rollos Activos con al menos una foto.
-  final VoidCallback? onCerrar;
-
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-    final puedeCerrar =
-        onCerrar != null && rollo.estado == EstadoRollo.activo && rollo.fotosTomadas > 0;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -36,8 +32,14 @@ class TarjetaRollo extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Rollo ${rollo.filtro.nombre} · ${rollo.capacidad} fotos',
+                      rollo.titulo,
                       style: tema.textTheme.titleMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      '${rollo.filtro.nombre} · ${rollo.capacidad} fotos',
+                      style: tema.textTheme.bodySmall,
                     ),
                     const SizedBox(height: 4),
                     Text(_detalle(), style: tema.textTheme.bodySmall),
@@ -52,12 +54,6 @@ class TarjetaRollo extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _ChipEstado(estado: rollo.estado),
-              if (puedeCerrar)
-                IconButton(
-                  tooltip: 'Cerrar rollo',
-                  icon: const Icon(Icons.lock_outline),
-                  onPressed: onCerrar,
-                ),
             ],
           ),
         ),
@@ -68,24 +64,15 @@ class TarjetaRollo extends StatelessWidget {
   String _detalle() {
     switch (rollo.estado) {
       case EstadoRollo.activo:
-        return '${rollo.fotosTomadas} de ${rollo.capacidad} fotos · quedan ${rollo.fotosRestantes}';
+        return '${rollo.fotosTomadas} de ${rollo.capacidad} tomadas · quedan ${rollo.fotosRestantes}';
       case EstadoRollo.enCola:
         return '${rollo.fotosTomadas} fotos · esperando turno para revelarse';
       case EstadoRollo.revelando:
         final restante = rollo.tiempoRestante ?? Duration.zero;
-        return '${rollo.fotosTomadas} fotos · listo en ${_formatear(restante)}';
+        return '${rollo.fotosTomadas} fotos · listo en ${formatearDuracion(restante)}';
       case EstadoRollo.revelado:
         return '${rollo.fotosTomadas} fotos reveladas';
     }
-  }
-
-  static String _formatear(Duration d) {
-    if (d <= Duration.zero) return 'unos segundos';
-    final horas = d.inHours;
-    final minutos = d.inMinutes.remainder(60);
-    if (horas > 0) return '$horas h $minutos min';
-    if (minutos > 0) return '$minutos min';
-    return 'menos de 1 min';
   }
 }
 

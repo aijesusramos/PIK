@@ -174,6 +174,11 @@ namespace Pik.Api.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Titulo")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("UsuarioId")
                         .HasColumnType("TEXT");
 

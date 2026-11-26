@@ -34,7 +34,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      // Si funciona, AuthService avisa y main.dart muestra HomeScreen.
+      // Si funciona, AuthService avisa y main.dart muestra la cámara (InicioScreen).
       await context.read<AuthService>().login(_email.text, _password.text);
     } on ApiException catch (e) {
       setState(() => _error = e.mensaje);

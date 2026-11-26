@@ -1,15 +1,17 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:provider/provider.dart';
 
 import '../api/api_client.dart';
 import '../models/modelos.dart';
-import '../services/rollos_service.dart';
+import '../services/mis_rollos.dart';
 import '../widgets/tarjeta_rollo.dart';
 
-/// Crear un rollo: primero el filtro, después la capacidad.
-/// Una vez creado, el rollo ya no cambia.
+/// Crear un rollo: primero el filtro, después la capacidad (y un título opcional).
+/// El filtro y la capacidad ya no cambian; el título sí se puede cambiar después.
 class NuevoRolloScreen extends StatefulWidget {
-  const NuevoRolloScreen({super.key});
+  const NuevoRolloScreen({super.key, required this.misRollos});
+
+  /// Se pasa como parámetro: esta pantalla es una ruta nueva y no hereda el provider.
+  final MisRollos misRollos;
 
   @override
   State<NuevoRolloScreen> createState() => _NuevoRolloScreenState();
@@ -19,6 +21,16 @@ class _NuevoRolloScreenState extends State<NuevoRolloScreen> {
   FiltroRollo? _filtro;
   int? _capacidad;
   bool _creando = false;
+  final _titulo = TextEditingController();
+
+  /// El nombre que pondrá la API si no se escribe título ("Rollo N").
+  String get _tituloPorDefecto => 'Rollo ${widget.misRollos.rollos.length + 1}';
+
+  @override
+  void dispose() {
+    _titulo.dispose();
+    super.dispose();
+  }
 
   Future<void> _crear() async {
     final filtro = _filtro;
@@ -27,7 +39,7 @@ class _NuevoRolloScreenState extends State<NuevoRolloScreen> {
 
     setState(() => _creando = true);
     try {
-      await context.read<RollosService>().crear(filtro, capacidad);
+      await widget.misRollos.crear(filtro, capacidad, titulo: _titulo.text);
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -121,6 +133,21 @@ class _NuevoRolloScreenState extends State<NuevoRolloScreen> {
               ),
             ),
           ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _titulo,
+          enabled: !_creando,
+          maxLength: maxLargoTitulo,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: InputDecoration(
+            labelText: 'Título (opcional)',
+            hintText: 'Ej. Vacaciones en la playa',
+            helperText: 'Si lo dejas vacío se llamará "$_tituloPorDefecto". Puedes cambiarlo después.',
+          ),
+          onSubmitted: (_) {
+            if (_capacidad != null && !_creando) _crear();
+          },
+        ),
         const SizedBox(height: 16),
         FilledButton(
           onPressed: (_capacidad == null || _creando) ? null : _crear,
@@ -130,7 +157,7 @@ class _NuevoRolloScreenState extends State<NuevoRolloScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Después de crearlo, el filtro y la capacidad no se pueden cambiar.',
+          'Después de crearlo, el filtro y la capacidad ya no se pueden cambiar.',
           textAlign: TextAlign.center,
           style: tema.textTheme.bodySmall,
         ),

@@ -12,7 +12,9 @@ se hace y por qué.
 ## Reglas de negocio
 
 - Un rollo se crea eligiendo **primero el filtro** (`Original`, `BlancoNegro`, `RedBlue`) y
-  **después la capacidad** (6, 12 o 24 fotos). Una vez creado, no cambia.
+  **después la capacidad** (6, 12 o 24 fotos). Filtro y capacidad no cambian después.
+- Cada rollo tiene un **título** (máx. 40). Opcional al crear: vacío → "Rollo N" (N = rollos que
+  el usuario ha creado + 1). Es lo **único** que se puede cambiar después (en cualquier estado).
 - Tiempo de revelado según la **capacidad** (no las fotos tomadas): 6 = 3 h, 12 = 6 h, 24 = 12 h.
 - Estados: `Activo → EnCola → Revelando → Revelado`.
 - Máximo **1 rollo Activo** por usuario y máximo **2 Revelando** a la vez; los demás esperan
@@ -36,13 +38,14 @@ se hace y por qué.
     Contraseñas con `PasswordHasher<Usuario>`. Mismo mensaje si el correo no existe o la
     contraseña es incorrecta.
   - `RollosController` (`[Authorize]`) — `POST /api/rollos`, `GET /api/rollos[?estado=]`,
-    `GET /api/rollos/{id}`, `POST /api/rollos/{id}/cerrar`.
+    `GET /api/rollos/{id}`, `PATCH /api/rollos/{id}` (renombrar: `{ "titulo" }`),
+    `POST /api/rollos/{id}/cerrar`.
   - `FotosController` (`[Authorize]`) — `POST /api/rollos/{id}/fotos` (multipart: `archivo`,
     `ancho`, `alto`, `fechaCapturaUtc`; JPG/PNG ≤ 15 MB), `GET /api/rollos/{id}/fotos` (lista vacía
     + `bloqueado` + `segundosRestantes` antes del revelado), `GET /api/fotos/{id}/archivo`
     (**423 Locked** si no está revelada; `?descargar=true` para descarga).
 - `Services/`
-  - `RolloService` — concentra las reglas (crear, agregar foto, cerrar, procesar revelados).
+  - `RolloService` — concentra las reglas (crear, renombrar, agregar foto, cerrar, procesar revelados).
     Usa transacciones (sin anidar, SQLite no lo permite). Errores de regla →
     `ReglaNegocioException` → el controlador responde **409** con `{ "mensaje": "..." }`.
   - `ReveladoWorker` (`BackgroundService`) — cada `IntervaloRevisionSegundos` termina revelados
@@ -57,7 +60,10 @@ se hace y por qué.
   dura 1 minuto: un rollo de 6 se revela en 3 min). `Jwt:Key` está en
   `appsettings.Development.json` (ignorado por git).
 - Corre en **http://localhost:5292** (perfil `http`). Pruebas manuales en `Pik.Api.http`.
-- Migraciones EF en `Migrations/`. Ignorados por git: `pik.db*`, `almacenamiento/`.
+- Migraciones EF en `Migrations/` (`Initial`, `TituloRollo`: agrega `Titulo` y numera los rollos
+  existentes con SQL). La app no aplica migraciones sola: `dotnet ef database update`.
+  Si la API está corriendo (exe bloqueado), usar `--configuration Release`.
+  Ignorados por git: `pik.db*`, `almacenamiento/`.
 
 Comandos:
 
@@ -71,7 +77,7 @@ dotnet ef database update
 
 ## App (pik_app)
 
-- Paquetes: `http`, `http_parser`, `provider`, `flutter_secure_storage`, `camera`, `image`.
+- Paquetes: `http`, `http_parser`, `provider`, `flutter_secure_storage`, `camera`, `image`, `gal`, `web`.
 - En Flutter 3.50 la plantilla usa `package:material_ui/material_ui.dart` (Material separado del
   framework).
 - `lib/config.dart` — URL de la API con `--dart-define=API_URL=...` (por defecto
@@ -79,18 +85,33 @@ dotnet ef database update
   la IP de la PC.
 - `lib/api/api_client.dart` — agrega el JWT, convierte errores en `ApiException(statusCode, mensaje)`.
 - `lib/services/` — `AuthService` (ChangeNotifier; guarda el token en `flutter_secure_storage`),
-  `RollosService`.
+  `RollosService`, `FotosService`, y **`MisRollos`** (ChangeNotifier con la lista de rollos y el
+  `activo`, compartido por la cámara y la galería; refresca cada 30 s). `MisRollos` se crea en
+  `InicioScreen` (vive mientras hay sesión), así que las **rutas** que se abren encima
+  (`NuevoRolloScreen`, `GaleriaScreen`, panel, diálogos) no lo heredan: se les pasa por parámetro.
 - `lib/models/modelos.dart` — espejo de los DTOs (enums con su texto `api`).
-- `lib/screens/` — login, registro, home (rollos por estado), nuevo rollo (filtro → capacidad),
-  cámara (`camara_screen.dart`, al tocar un rollo Activo).
+- Navegación (con sesión): `InicioScreen` = `PageView` de 2 páginas →
+  **[cámara (`camara_screen.dart`)] ⇄ deslizar ⇄ [Mis rollos (`rollos_screen.dart`)]**; también
+  hay botones para ir y volver, y "atrás" en Android regresa a la cámara.
+  - Cámara (pantalla principal): arriba título + contador "07 / 12" y botón a la galería; abajo
+    izquierda flash (solo móvil) y cambiar cámara, centro obturador, derecha **botón del rollo**
+    (muestra el filtro y fotos restantes; sin rollo es "+" → `NuevoRolloScreen`). Tocar el rollo
+    abre `widgets/panel_rollo.dart`: info, **Terminar rollo** (cierre manual, ≥1 foto) y cambiar
+    título. La cámara se apaga cuando no se ve (`visible`) y la página se conserva (keep-alive).
+  - Mis rollos: secciones Tomando fotos / En el cuarto oscuro / Revelados; cerrar sesión en el
+    menú ⋮. Tocar un Revelado (o Revelando con el tiempo cumplido: el servidor valida por la hora)
+    abre `galeria_screen.dart` (cuadrícula) → `visor_foto_screen.dart` (PageView + zoom +
+    descargar). Mantener presionado una tarjeta abre el panel.
+- `NuevoRolloScreen`: filtro → capacidad + título opcional (el hint muestra el "Rollo N").
 - `lib/filtros/filtros.dart` — **fuente única de los filtros**: matrices de color 4×5 (formato de
   `ColorFilter.matrix`). Se usan en la vista previa (`ColorFiltered`), en `MuestraFiltro` y en
   `procesarFoto` (decodifica, endereza por EXIF, reduce a 1920 px, aplica la matriz, recodifica
   JPEG q90 y así borra el EXIF/GPS). No importa Flutter para poder correr en `compute`.
 - Cámara: la foto **no se muestra** al tomarla (estilo analógico), solo avanza el contador. Una foto
   a la vez: capturar → filtrar → subir (`FotosService`, multipart `archivo` image/jpeg + `ancho`,
-  `alto`, `fechaCapturaUtc`). Si falla la red queda pendiente para reintentar; un 409 cierra la
-  cámara. Al llenarse, la API cierra el rollo y la app avisa (Revelando o EnCola).
+  `alto`, `fechaCapturaUtc`). Si falla la red queda pendiente para reintentar; un 409 recarga los
+  rollos. Al llenarse, la API cierra el rollo y la app avisa (Revelando o EnCola).
+- Flash oculto en web: las webcams no tienen "torch" y activarlo puede hacer fallar la foto.
 - **En web (Chrome) la vista previa NO muestra el filtro** (confirmado): `camera_web` usa un
   elemento `<video>` del navegador y `ColorFiltered` no se le aplica. La foto guardada sí lleva el
   filtro. En el teléfono se espera que la vista previa sí lo muestre (pendiente de probar).
@@ -98,8 +119,16 @@ dotnet ef database update
   provisionales: el autor los ajustará después a su gusto. Cambiarlos solo en `filtros.dart`.
 - Permisos: Android lo declara el plugin `camera`; iOS `NSCameraUsageDescription` en Info.plist.
   `enableAudio: false` para no pedir micrófono.
-- Pruebas en `test/` (`flutter test`): modelos, filtros, subida con `MockClient`, login.
-- Pendiente: galería (Revelado), notificaciones FCM.
+- Galería: las imágenes requieren JWT, así que **no usar `Image.network`**; se bajan con
+  `ApiClient.getBytes` y se muestran con `ImagenProtegida` (`Image.memory`). `CacheImagenes`
+  (en `fotos_service.dart`) guarda los Future por foto mientras la galería está abierta.
+- Descargar: `services/guardar_foto.dart` con export condicional → web: enlace `<a download>`
+  con un Blob (paquete `web`); móvil: `Gal.putImageBytes` (nombre sin extensión). Permisos: Android
+  `WRITE_EXTERNAL_STORAGE` maxSdk 29 + `requestLegacyExternalStorage`; iOS
+  `NSPhotoLibrary(Add)UsageDescription`. La versión móvil aún no se ha probado en un teléfono.
+- Pruebas en `test/` (`flutter test`): modelos, filtros, subida y descarga con `MockClient`,
+  caché de imágenes, `MisRollos` (crear con/sin título, renombrar), login.
+- Pendiente: compartir fotos, notificaciones FCM, ajustar filtros.
 
 ## Entorno
 

@@ -176,8 +176,24 @@ byte alterado o archivo movido → falla, clave inválida → no arranca, endpoi
   después de leerla (en web libera la URL `blob:`), y `limpiarCapturasViejas()` borra restos al
   abrir la cámara. No hay base local ni caché en disco; la foto pendiente de subir vive solo en
   memoria (se pierde si se cierra la app: decisión consciente para no dejar copias).
-- `MuestraFiltro` (`widgets/tarjeta_rollo.dart`): degradado fijo por filtro con colores calculados
-  pasando un degradado base por los `look_*` de `generate_lut.py`; recalcular si cambian los LUTs.
+- **Diseño de la cámara** (`widgets/cuerpo_camara.dart`): `CuerpoMetalico` (metal cepillado gris
+  claro: `assets/texturas/metal.png`, repetible, generada con numpy/scipy + degradado de brillo),
+  `PanelHundido` (panel oscuro con bisel y sombra interior dibujada con degradados DEBAJO del
+  contenido: visor, contador, compartimento del rollo, aviso de foto pendiente), `TextoGrabado`
+  ("PIK" grabado) y `ReticulaVisor` (CustomPainter: esquinas de marco, marcas de tercios y centro,
+  círculo de imagen partida + anillo de microprismas, ~50 % de opacidad con sombra tenue).
+  Colores en `theme.dart` (`colorMetal`, `colorPanel`, `colorGrafito`). Barra de estado oscura
+  (`SystemUiOverlayStyle.dark`). Botón de galería: `assets/iconos/galeria.png` (36 px; respaldo
+  al icono de Material si faltara). Nombres de assets **en minúsculas** (Android y web
+  distinguen mayúsculas: `galeria.PNG` no se encontraría).
+- **Tipografía**: Archivo (OFL, `assets/fuentes/`), instancias fijas generadas de la variable con
+  fontTools (un archivo por peso, para que el peso se respete en todas las plataformas).
+  `fuenteTexto` = Archivo (toda la app, `ThemeData.fontFamily`); `fuenteRotulos` = ArchivoExpanded
+  (ancho 125, 700/800) para los rótulos de la cámara.
+- `IconoRollo` (`widgets/tarjeta_rollo.dart`): icono PNG del rollo de cada filtro en
+  `assets/rollos/` (`original`, `blanco_negro`, `red_blue`; `filtro: null` = `vacio.png`, el botón
+  de la cámara sin rollo). 450×450, fondo transparente, mismos márgenes. Se usa en la cámara
+  (64), tarjetas (56), panel (72) y al crear un rollo. `IconoRollo.rutaDe` es el único mapeo.
 - Flash oculto en web: las webcams no tienen "torch" y activarlo puede hacer fallar la foto.
 - Permisos: Android lo declara el plugin `camera`; iOS `NSCameraUsageDescription` en Info.plist.
   `enableAudio: false` para no pedir micrófono.

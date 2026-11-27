@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show compute, kIsWeb;
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
@@ -15,6 +16,7 @@ import '../services/fotos_service.dart';
 import '../services/mis_rollos.dart';
 import '../services/revelador.dart';
 import '../theme.dart';
+import '../widgets/cuerpo_camara.dart';
 import '../widgets/panel_rollo.dart';
 import '../widgets/tarjeta_rollo.dart';
 import 'nuevo_rollo_screen.dart';
@@ -201,18 +203,16 @@ class _CamaraScreenState extends State<CamaraScreen>
   }
 
   String _mensajeCamara(CameraException e) => switch (e.code) {
-        'CameraAccessDenied' ||
-        'CameraAccessDeniedWithoutPrompt' ||
-        'CameraAccessRestricted' =>
-          kIsWeb
-              ? 'PIK necesita permiso para usar la cámara. Permítelo en el ícono '
-                  'de la cámara de la barra de direcciones y toca Reintentar.'
-              : 'PIK necesita permiso para usar la cámara. Actívalo en la '
-                  'configuración del teléfono y toca Reintentar.',
-        'cameraNotFound' => 'No se encontró ninguna cámara.',
-        'cameraNotReadable' => 'La cámara está en uso por otra aplicación.',
-        _ => 'No se pudo abrir la cámara (${e.description ?? e.code}).',
-      };
+    'CameraAccessDenied' || 'CameraAccessDeniedWithoutPrompt' || 'CameraAccessRestricted' =>
+      kIsWeb
+          ? 'PIK necesita permiso para usar la cámara. Permítelo en el ícono '
+                'de la cámara de la barra de direcciones y toca Reintentar.'
+          : 'PIK necesita permiso para usar la cámara. Actívalo en la '
+                'configuración del teléfono y toca Reintentar.',
+    'cameraNotFound' => 'No se encontró ninguna cámara.',
+    'cameraNotReadable' => 'La cámara está en uso por otra aplicación.',
+    _ => 'No se pudo abrir la cámara (${e.description ?? e.code}).',
+  };
 
   // ---------- Rollo ----------
 
@@ -221,9 +221,8 @@ class _CamaraScreenState extends State<CamaraScreen>
     if (activo != null) {
       await mostrarPanelRollo(context, misRollos, activo);
     } else {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => NuevoRolloScreen(misRollos: misRollos)),
-      );
+      await Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => NuevoRolloScreen(misRollos: misRollos)));
     }
   }
 
@@ -282,13 +281,11 @@ class _CamaraScreenState extends State<CamaraScreen>
       final revelada = await revelador.revelar(original.bytes, rollo.filtro, id);
 
       // 3. Se suben las dos.
-      await _subir(misRollos, fotos, FotoParaSubir(
-        id: id,
-        rolloId: rollo.id,
-        original: original,
-        revelada: revelada,
-        fechaCaptura: fecha,
-      ));
+      await _subir(
+        misRollos,
+        fotos,
+        FotoParaSubir(id: id, rolloId: rollo.id, original: original, revelada: revelada, fechaCaptura: fecha),
+      );
     } on CameraException catch (e) {
       _mostrarMensaje('No se pudo tomar la foto (${e.description ?? e.code}).');
     } on FormatException catch (e) {
@@ -349,17 +346,15 @@ class _CamaraScreenState extends State<CamaraScreen>
   Future<void> _rolloCompleto(Rollo rollo) {
     final mensaje = rollo.estado == EstadoRollo.enCola
         ? 'Ya tienes 2 rollos revelándose, así que "${rollo.titulo}" quedó en cola. '
-            'Empezará a revelarse solo cuando termine uno (tardará ${rollo.horasRevelado} h).'
+              'Empezará a revelarse solo cuando termine uno (tardará ${rollo.horasRevelado} h).'
         : '"${rollo.titulo}" ya está en el cuarto oscuro. Tus fotos estarán listas en '
-            '${rollo.horasRevelado} h.';
+              '${rollo.horasRevelado} h.';
     return showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('¡Rollo completo!'),
         content: Text(mensaje),
-        actions: [
-          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido')),
-        ],
+        actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido'))],
       ),
     );
   }
@@ -379,16 +374,33 @@ class _CamaraScreenState extends State<CamaraScreen>
     final misRollos = context.watch<MisRollos>();
     final activo = misRollos.activo;
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _barraSuperior(activo),
-            Expanded(child: Center(child: _visor())),
-            if (_pendiente != null) _avisoPendiente(),
-            _barraInferior(misRollos, activo),
-          ],
+    // Fondo claro: los iconos de la barra de estado (hora, batería) van oscuros.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: colorMetal,
+        body: CuerpoMetalico(
+          child: SafeArea(
+            child: Column(
+              children: [
+                _barraSuperior(activo),
+                // La "ventana" del visor: un panel hundido en el cuerpo de la cámara.
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: PanelHundido(
+                      radio: 18,
+                      padding: const EdgeInsets.all(6),
+                      fondo: const Color(0xFF0C0D0E),
+                      child: SizedBox.expand(child: Center(child: _visor())),
+                    ),
+                  ),
+                ),
+                if (_pendiente != null) _avisoPendiente(),
+                _barraInferior(misRollos, activo),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -396,24 +408,30 @@ class _CamaraScreenState extends State<CamaraScreen>
 
   Widget _barraSuperior(Rollo? activo) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
       child: Row(
         children: [
-          const SizedBox(width: 48),
-          Expanded(
-            child: activo == null
-                ? const Text(
-                    'Sin rollo',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white54),
-                  )
-                : _ContadorFotos(rollo: activo),
+          // Marca grabada en el metal; mide lo mismo que el botón de la derecha, así el
+          // contador queda centrado.
+          const SizedBox(
+            width: 64,
+            child: Align(alignment: Alignment.centerLeft, child: TextoGrabado('PIK', tamano: 16)),
           ),
-          IconButton(
-            tooltip: 'Mis rollos',
-            color: Colors.white,
-            icon: const Icon(Icons.photo_library_outlined),
-            onPressed: widget.onAbrirGaleria,
+          Expanded(
+            child: Center(
+              child: PanelHundido(
+                radio: 10,
+                padding: const EdgeInsets.fromLTRB(18, 6, 18, 6),
+                child: _ContadorFotos(rollo: activo),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 64,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _BotonGaleria(onPressed: widget.onAbrirGaleria),
+            ),
           ),
         ],
       ),
@@ -429,7 +447,11 @@ class _CamaraScreenState extends State<CamaraScreen>
           children: [
             const Icon(Icons.no_photography_outlined, size: 48, color: Colors.white70),
             const SizedBox(height: 16),
-            Text(_errorCamara!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white)),
+            Text(
+              _errorCamara!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white),
+            ),
             const SizedBox(height: 16),
             OutlinedButton(onPressed: _iniciarCamaras, child: const Text('Reintentar')),
           ],
@@ -446,43 +468,47 @@ class _CamaraScreenState extends State<CamaraScreen>
     // el look del filtro solo se descubre al revelar.
     final vista = CameraPreview(c);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Stack(
-          children: [
-            vista,
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: _destello ? 1 : 0,
-                  duration: const Duration(milliseconds: 90),
-                  child: const ColoredBox(color: Colors.white),
-                ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Stack(
+        children: [
+          vista,
+          // Retícula del visor (fija: RepaintBoundary evita redibujarla con cada cuadro).
+          const Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(child: CustomPaint(painter: ReticulaVisor())),
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _destello ? 1 : 0,
+                duration: const Duration(milliseconds: 90),
+                child: const ColoredBox(color: Colors.white),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _avisoPendiente() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)),
-      child: Row(
-        children: [
-          const Icon(Icons.cloud_off, color: Colors.white70, size: 20),
-          const SizedBox(width: 8),
-          const Expanded(
-            child: Text('La última foto no se guardó.', style: TextStyle(color: Colors.white)),
-          ),
-          TextButton(onPressed: _avanzando ? null : _descartarPendiente, child: const Text('Descartar')),
-          TextButton(onPressed: _avanzando ? null : _reintentar, child: const Text('Reintentar')),
-        ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: PanelHundido(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        child: Row(
+          children: [
+            const Icon(Icons.cloud_off, color: Colors.white70, size: 20),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('La última foto no se guardó.', style: TextStyle(color: Colors.white)),
+            ),
+            TextButton(onPressed: _avanzando ? null : _descartarPendiente, child: const Text('Descartar')),
+            TextButton(onPressed: _avanzando ? null : _reintentar, child: const Text('Reintentar')),
+          ],
+        ),
       ),
     );
   }
@@ -504,7 +530,7 @@ class _CamaraScreenState extends State<CamaraScreen>
                       FlashMode.always => 'Flash encendido',
                       _ => 'Flash apagado',
                     },
-                    color: Colors.white,
+                    color: colorGrafito,
                     onPressed: hayCamara && !_avanzando ? _cambiarFlash : null,
                     icon: Icon(switch (_flash) {
                       FlashMode.auto => Icons.flash_auto,
@@ -515,18 +541,14 @@ class _CamaraScreenState extends State<CamaraScreen>
                 if (_camaras.length > 1)
                   IconButton(
                     tooltip: 'Cambiar cámara',
-                    color: Colors.white,
+                    color: colorGrafito,
                     onPressed: _avanzando ? null : _cambiarCamara,
                     icon: const Icon(Icons.cameraswitch_outlined),
                   ),
               ],
             ),
           ),
-          _Obturador(
-            habilitado: _listaParaDisparar(activo),
-            avanzando: _avanzando,
-            onPressed: _disparar,
-          ),
+          _Obturador(habilitado: _listaParaDisparar(activo), avanzando: _avanzando, onPressed: _disparar),
           // Derecha: el rollo activo, o + para crear uno.
           Expanded(
             child: Align(
@@ -545,33 +567,75 @@ class _CamaraScreenState extends State<CamaraScreen>
 }
 
 /// Título del rollo y contador de fotos al estilo de una cámara de rollo: "07 / 12".
+/// Va dentro de un panel hundido, como la ventanita del contador de una cámara.
 class _ContadorFotos extends StatelessWidget {
   const _ContadorFotos({required this.rollo});
 
-  final Rollo rollo;
+  final Rollo? rollo;
+
+  static const _estiloTitulo = TextStyle(
+    fontFamily: fuenteRotulos,
+    fontWeight: FontWeight.w700,
+    fontSize: 10.5,
+    letterSpacing: 1.6,
+    color: Colors.white60,
+  );
+
+  static const _estiloContador = TextStyle(
+    fontFamily: fuenteRotulos,
+    fontWeight: FontWeight.w800,
+    fontSize: 24,
+    height: 1.15,
+    letterSpacing: 1.5,
+    color: colorAcento,
+    // Los números ocupan lo mismo (07 → 08 no "brinca") y brillan un poco, como un LED.
+    fontFeatures: [FontFeature.tabularFigures()],
+    shadows: [Shadow(color: Color(0x66E8A33D), blurRadius: 8)],
+  );
 
   @override
   Widget build(BuildContext context) {
-    final tomadas = rollo.fotosTomadas.toString().padLeft(2, '0');
-    return Column(
-      children: [
-        Text(
-          rollo.titulo,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: Colors.white70, fontSize: 13),
-        ),
-        Text(
-          '$tomadas / ${rollo.capacidad}',
-          style: const TextStyle(
-            color: colorAcento,
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            fontFeatures: [FontFeature.tabularFigures()],
-            letterSpacing: 2,
+    final r = rollo;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 120, maxWidth: 220),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            (r?.titulo ?? 'Sin rollo').toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: _estiloTitulo,
           ),
-        ),
-      ],
+          Text(
+            r == null ? '-- / --' : '${r.fotosTomadas.toString().padLeft(2, '0')} / ${r.capacidad}',
+            style: r == null ? _estiloContador.copyWith(color: Colors.white24, shadows: []) : _estiloContador,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Botón de la galería ("Mis rollos"). Usa assets/iconos/galeria.png si existe; si no,
+/// el icono de Material.
+class _BotonGaleria extends StatelessWidget {
+  const _BotonGaleria({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: 'Mis rollos',
+      onPressed: onPressed,
+      icon: Image.asset(
+        'assets/iconos/galeria.png',
+        width: 36,
+        height: 36,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, _, _) => const Icon(Icons.photo_library_outlined, color: colorGrafito, size: 28),
+      ),
     );
   }
 }
@@ -585,46 +649,59 @@ class _BotonRollo extends StatelessWidget {
   final bool cargando;
   final VoidCallback? onPressed;
 
+  /// El rollo es más ancho que alto y el PNG trae margen: se dibuja un poco más grande que
+  /// el resto de los botones (flash, cambiar cámara) para que se vea del mismo peso.
+  static const _tamanoIcono = 64.0;
+
   @override
   Widget build(BuildContext context) {
     final r = rollo;
-    final Widget contenido;
-    if (r != null) {
-      contenido = Stack(
-        clipBehavior: Clip.none,
-        children: [
-          MuestraFiltro(filtro: r.filtro, tamano: 52),
+    final Widget icono = r == null && cargando
+        ? const SizedBox(
+            width: _tamanoIcono,
+            height: _tamanoIcono,
+            child: Center(
+              child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
+          )
+        // Sin rollo: el rollo vacío (con un "+" dibujado), toca para crear uno.
+        : IconoRollo(filtro: r?.filtro, tamano: _tamanoIcono);
+
+    // El rollo va en un "compartimento" hundido en el cuerpo, como la ventanita de la tapa
+    // trasera de una cámara por la que se ve qué rollo está cargado.
+    final contenido = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        PanelHundido(
+          radio: 14,
+          padding: const EdgeInsets.all(2),
+          fondo: const Color(0xFF2A2C2F),
+          child: icono,
+        ),
+        if (r != null)
           Positioned(
             right: -6,
             bottom: -6,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(color: colorAcento, borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(
+                color: colorAcento,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: const [BoxShadow(color: Color(0x55000000), blurRadius: 3, offset: Offset(0, 1))],
+              ),
               child: Text(
                 '${r.fotosRestantes}',
-                style: const TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontFamily: fuenteRotulos,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                  color: Colors.black,
+                ),
               ),
             ),
           ),
-        ],
-      );
-    } else if (cargando) {
-      contenido = const SizedBox(
-        width: 52,
-        height: 52,
-        child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
-      );
-    } else {
-      contenido = Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: colorAcento, width: 2),
-        ),
-        child: const Icon(Icons.add, color: colorAcento, size: 28),
-      );
-    }
+      ],
+    );
 
     return Tooltip(
       message: r == null ? 'Nuevo rollo' : '${r.titulo}: quedan ${r.fotosRestantes}',
@@ -633,7 +710,7 @@ class _BotonRollo extends StatelessWidget {
         label: r == null ? 'Crear un rollo nuevo' : 'Rollo ${r.titulo}',
         child: InkWell(
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(16),
           child: Padding(padding: const EdgeInsets.all(6), child: contenido),
         ),
       ),
@@ -658,24 +735,40 @@ class _Obturador extends StatelessWidget {
       child: GestureDetector(
         // Se llama aunque esté deshabilitado: así puede explicar por qué (p. ej. sin rollo).
         onTap: onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: 76,
-          height: 76,
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
+        // Anillo de grafito con un botón cromado al centro, como el disparador de una cámara.
+        child: Container(
+          width: 78,
+          height: 78,
+          padding: const EdgeInsets.all(7),
+          decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: habilitado ? Colors.white : Colors.white38, width: 4),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF45484C), Color(0xFF1A1B1D)],
+            ),
+            boxShadow: [
+              BoxShadow(color: Color(0x59000000), blurRadius: 8, offset: Offset(0, 3)),
+              BoxShadow(color: Color(0x99FFFFFF), offset: Offset(0, -1)), // filo con luz
+            ],
           ),
-          child: DecoratedBox(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: habilitado ? Colors.white : Colors.white24,
+              border: Border.all(color: const Color(0x66000000)),
+              gradient: RadialGradient(
+                center: const Alignment(-0.3, -0.4), // brillo arriba a la izquierda
+                radius: 1.1,
+                colors: habilitado
+                    ? const [Color(0xFFFFFFFF), Color(0xFFD5D7DA), Color(0xFFA2A5A9)]
+                    : const [Color(0xFF8C8F93), Color(0xFF6E7175), Color(0xFF55585C)],
+              ),
             ),
             child: avanzando
                 ? const Padding(
                     padding: EdgeInsets.all(18),
-                    child: CircularProgressIndicator(strokeWidth: 3, color: Colors.black54),
+                    child: CircularProgressIndicator(strokeWidth: 3, color: colorGrafito),
                   )
                 : null,
           ),

@@ -86,7 +86,7 @@ class _NuevoRolloScreenState extends State<NuevoRolloScreen> {
             margin: const EdgeInsets.only(bottom: 12),
             child: ListTile(
               contentPadding: const EdgeInsets.all(12),
-              leading: MuestraFiltro(filtro: filtro),
+              leading: IconoRollo(filtro: filtro),
               title: Text(filtro.nombre, style: tema.textTheme.titleMedium),
               subtitle: Text(filtro.descripcion),
               trailing: const Icon(Icons.chevron_right),
@@ -98,7 +98,7 @@ class _NuevoRolloScreenState extends State<NuevoRolloScreen> {
   List<Widget> _pasoCapacidad(ThemeData tema) => [
         Row(
           children: [
-            MuestraFiltro(filtro: _filtro!, tamano: 40),
+            IconoRollo(filtro: _filtro!, tamano: 40),
             const SizedBox(width: 12),
             Text('Rollo ${_filtro!.nombre}', style: tema.textTheme.titleMedium),
           ],

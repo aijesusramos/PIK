@@ -34,6 +34,28 @@ flutter:
   # LUTs de los filtros (strips PNG generados con tools/generate_lut.py).
   assets:
     - assets/luts/
+    - assets/rollos/
+    - assets/texturas/
+    - assets/iconos/
+
+  # Archivo (Google Fonts, OFL: assets/fuentes/OFL.txt). Instancias fijas de la fuente
+  # variable, un archivo por peso: así el peso se respeta igual en Android, iOS y web.
+  fonts:
+    - family: Archivo
+      fonts:
+        - asset: assets/fuentes/Archivo-Regular.ttf
+        - asset: assets/fuentes/Archivo-Medium.ttf
+          weight: 500
+        - asset: assets/fuentes/Archivo-SemiBold.ttf
+          weight: 600
+        - asset: assets/fuentes/Archivo-Bold.ttf
+          weight: 700
+    - family: ArchivoExpanded
+      fonts:
+        - asset: assets/fuentes/ArchivoExpanded-Bold.ttf
+          weight: 700
+        - asset: assets/fuentes/ArchivoExpanded-ExtraBold.ttf
+          weight: 800
 
   # Fragment shaders: el tool de Flutter los compila al construir la app.
   shaders:

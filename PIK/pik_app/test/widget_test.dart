@@ -57,8 +57,8 @@ void main() {
     );
     await tester.pump();
 
+    // Es la pantalla de login (con o sin Client ID de Google configurado en config.dart).
     expect(find.text('PIK'), findsOneWidget);
-    // En las pruebas no hay Client ID de Google: la pantalla lo dice en vez de fallar.
-    expect(find.textContaining('Client ID de Google'), findsOneWidget);
+    expect(find.textContaining('se crea tu cuenta con tu correo de Google'), findsOneWidget);
   });
 }

@@ -96,7 +96,7 @@ class _PanelRolloState extends State<PanelRollo> {
               children: [
                 Row(
                   children: [
-                    MuestraFiltro(filtro: rollo.filtro, tamano: 56),
+                    IconoRollo(filtro: rollo.filtro, tamano: 72),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(

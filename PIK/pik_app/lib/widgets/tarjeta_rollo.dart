@@ -1,7 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../models/modelos.dart';
-import '../theme.dart';
 import '../utils/formato.dart';
 
 /// Tarjeta de un rollo en la galería de rollos.
@@ -24,7 +23,7 @@ class TarjetaRollo extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              MuestraFiltro(filtro: rollo.filtro, tamano: 48),
+              IconoRollo(filtro: rollo.filtro, tamano: 56),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -97,43 +96,34 @@ class _ChipEstado extends StatelessWidget {
   }
 }
 
-/// Cuadro que representa el look de cada filtro con un degradado.
+/// Icono del rollo fotográfico de cada filtro (assets/rollos/). Sin filtro (`null`) es el
+/// rollo vacío, el del botón de la cámara cuando todavía no hay un rollo activo.
 ///
-/// Los colores son los de un mismo degradado base (amarillo, coral, azul, verde y un
-/// tono oscuro) pasado por la función de cada filtro en tools/generate_lut.py, la
-/// misma que genera su LUT. Si cambian los LUTs, hay que recalcularlos.
-class MuestraFiltro extends StatelessWidget {
-  const MuestraFiltro({super.key, required this.filtro, this.tamano = 56});
+/// Los PNG miden 450×450 con fondo transparente y los mismos márgenes, así que todos ocupan
+/// el mismo lugar: [tamano] es el lado del cuadro donde se dibujan.
+class IconoRollo extends StatelessWidget {
+  const IconoRollo({super.key, required this.filtro, this.tamano = 56});
 
-  final FiltroRollo filtro;
+  final FiltroRollo? filtro;
   final double tamano;
 
-  static const _colores = {
-    FiltroRollo.original: [
-      Color(0xFFE9C449), Color(0xFFCB6C4F), Color(0xFF5FAACF), Color(0xFF6FBE57), Color(0xFF1A2637),
-    ],
-    FiltroRollo.blancoNegro: [
-      Color(0xFFE4E4E4), Color(0xFFB6B6B6), Color(0xFFB9B9B9), Color(0xFFBDBDBD), Color(0xFF282828),
-    ],
-    FiltroRollo.redBlue: [
-      Color(0xFFDAC996), Color(0xFFE77656), Color(0xFF5DB7ED), Color(0xFF95B790), Color(0xFF262F51),
-    ],
-  };
+  static String rutaDe(FiltroRollo? filtro) => switch (filtro) {
+        FiltroRollo.original => 'assets/rollos/original.png',
+        FiltroRollo.blancoNegro => 'assets/rollos/blanco_negro.png',
+        FiltroRollo.redBlue => 'assets/rollos/red_blue.png',
+        null => 'assets/rollos/vacio.png',
+      };
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Image.asset(
+      rutaDe(filtro),
       width: tamano,
       height: tamano,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colorAcento.withValues(alpha: 0.4)),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: _colores[filtro]!,
-        ),
-      ),
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.medium, // se reduce mucho (450 px → ~50): que no se vea pixeleado
+      gaplessPlayback: true, // al cambiar de rollo no parpadea en blanco
+      semanticLabel: filtro == null ? 'Sin rollo' : 'Rollo ${filtro!.nombre}',
     );
   }
 }

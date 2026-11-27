@@ -128,7 +128,25 @@ dotnet ef database update
   `NSPhotoLibrary(Add)UsageDescription`. La versión móvil aún no se ha probado en un teléfono.
 - Pruebas en `test/` (`flutter test`): modelos, filtros, subida y descarga con `MockClient`,
   caché de imágenes, `MisRollos` (crear con/sin título, renombrar), login.
-- Pendiente: compartir fotos, notificaciones FCM, ajustar filtros.
+- **Motor de revelado analógico** (en validación, **aún NO conectado a los rollos**; los rollos
+  siguen usando `filtros.dart`):
+  - `shaders/pik_develop.frag` (registrado en `flutter: shaders:`): LUT 3D como strip 2D →
+    halation (screen) → grano gaussiano. `lib/engine/pik_engine.dart` (`PikEngine.load()`,
+    `developBytes`, `develop`) y `lib/engine/film_preset.dart` (`FilmPreset.original`).
+  - Reglas: el orden de los uniforms del `.frag` debe coincidir con los índices de
+    `setFloat`/`setImageSampler`; los valores de `FilmPreset.original` deben ser iguales a
+    `PRESET_ORIGINAL` en `tools/preview.py`.
+  - LUTs en `assets/luts/` (strip PNG 1089×33 de un cubo 33³ + `.cube`), generados con
+    `tools/generate_lut.py`. `tools/` son herramientas Python (numpy, Pillow, scipy), no parte de la app.
+  - Web: `_decode` usa `instantiateImageCodecWithSize` (en web `ImageDescriptor` no da medidas) y
+    `_encodeJpg` usa `compute` (en web no hay isolates; `Isolate.run` falla).
+  - Semilla: el shader recibe `(seed % 997) + 0.5`; para el mismo grano en preview.py con
+    `seed = 1` usar `--seed 1.5`. Validado: Flutter vs preview.py difieren en media 0.26/255.
+  - Laboratorio temporal: `flutter run -d chrome -t lib/main_lab.dart` (`lib/debug/`).
+  - Pruebas: `test/pik_engine_test.dart` (el shader sí corre en `flutter test`).
+    `PIK_EXPORT=<carpeta>` exporta entrada/salida para comparar con preview.py.
+- Pendiente: conectar el motor a los rollos, LUTs de B&W y Red&Blue, compartir fotos,
+  notificaciones FCM.
 
 ## Entorno
 

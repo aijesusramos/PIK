@@ -27,7 +27,16 @@ public class FabricaPik : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("ConnectionStrings__Pik", $"Data Source={RutaBase}");
         Environment.SetEnvironmentVariable("Jwt__Key", "clave-solo-para-pruebas-de-integracion-0123456789");
         Environment.SetEnvironmentVariable("Revelado__IntervaloRevisionSegundos", "3600");
+        // Fotos en una carpeta temporal (nunca en Pik.Api/almacenamiento) y una clave de prueba.
+        Environment.SetEnvironmentVariable("Almacenamiento__RutaFotos", RutaFotos);
+        Environment.SetEnvironmentVariable("Almacenamiento__ClaveCifrado", ClavePrueba);
     }
+
+    /// <summary>32 bytes fijos en Base64, solo para pruebas.</summary>
+    public const string ClavePrueba = "cHJ1ZWJhcy1waWstY2xhdmUtZGUtMzItYnl0ZXMhISE=";
+
+    public string RutaFotos { get; } =
+        Path.Combine(Path.GetTempPath(), $"pik_test_fotos_{Guid.NewGuid():N}");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -44,6 +53,8 @@ public class FabricaPik : WebApplicationFactory<Program>
         base.Dispose(disposing);
         SqliteConnection.ClearAllPools(); // suelta el archivo para poder borrarlo
         try { File.Delete(RutaBase); } catch (IOException) { }
+        try { Directory.Delete(RutaFotos, recursive: true); } catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 }
 

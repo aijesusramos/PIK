@@ -81,7 +81,17 @@ se hace y por qué.
 - `Contracts/Dtos.cs` — DTOs (records). Nunca se exponen entidades. Errores: `ErrorRespuesta(Mensaje)`.
 - Fotos en `almacenamiento/fotos/{usuarioId}/{rolloId}/{fotoId}.jpg` (original) y
   `{fotoId}_revelada.jpg` (`Foto.RutaArchivo` / `Foto.RutaRevelada`), **fuera de wwwroot**
-  (solo accesibles por el endpoint que valida el revelado).
+  (solo accesibles por el endpoint que valida el revelado; responde `Cache-Control: no-store`).
+- **Fotos cifradas en reposo con AES-256-GCM** (`Services/AlmacenamientoCifrado.cs`): decorador
+  de `IAlmacenamientoFotos` sobre `AlmacenamientoLocal` (RolloService y controladores no lo
+  notan). Archivo = `"PIK1"` | versión de clave (1) | nonce aleatorio (12) | cifrado | tag (16);
+  AAD = encabezado + ruta relativa (`RutasFotos.Relativa`), así un archivo movido o alterado no
+  se descifra (`InvalidDataException` → 500). No se aceptan archivos en claro.
+  Clave: `Almacenamiento:ClaveCifrado` (32 bytes Base64) **nunca en appsettings ni en el repo**:
+  desarrollo con `dotnet user-secrets` (`UserSecretsId` en el csproj; se guarda en
+  `%APPDATA%\Microsoft\UserSecrets\`), producción con la variable de entorno
+  `Almacenamiento__ClaveCifrado`. Sin clave válida la API **no arranca** (`ClaveFotos.Desde`).
+  Si se pierde la clave, se pierden las fotos: respaldarla aparte.
 - Configuración: `Revelado:MinutosPorHora` = 60 en producción, **1 en desarrollo** (cada "hora"
   dura 1 minuto: un rollo de 6 se revela en 3 min). `Jwt:Key` está en
   `appsettings.Development.json` (ignorado por git).
@@ -99,14 +109,18 @@ dotnet build
 dotnet run --launch-profile http
 dotnet ef migrations add <Nombre>   # tras cambiar entidades
 dotnet ef database update            # opcional: la API también migra al arrancar
+dotnet user-secrets list             # debe mostrar Almacenamiento:ClaveCifrado (en otra PC: crearla)
 cd ../Pik.Api.Tests
 dotnet test                          # -c Release si la API está corriendo (exe bloqueado)
 ```
 
 Pruebas del backend: `Pik.Api.Tests/` (xUnit + `WebApplicationFactory<Program>`). `FabricaPik`
-levanta la API con una base SQLite **temporal** (variables de entorno, nunca toca `pik.db`) y un
-`ValidadorGoogleFalso`. `ValidadorGoogleTests` prueba el validador real (rechaza un token
-falsificado con otra llave; necesita internet).
+levanta la API con una base SQLite y una carpeta de fotos **temporales** + clave de prueba
+(variables de entorno, nunca toca `pik.db` ni `almacenamiento/`) y un `ValidadorGoogleFalso`.
+Como las variables de entorno son globales, las clases de prueba **no corren en paralelo**
+(`Configuracion.cs`). `ValidadorGoogleTests` prueba el validador real (rechaza un token
+falsificado con otra llave; necesita internet). `CifradoFotosTests`: en disco no hay JPEG,
+byte alterado o archivo movido → falla, clave inválida → no arranca, endpoint descifra.
 
 ## App (pik_app)
 

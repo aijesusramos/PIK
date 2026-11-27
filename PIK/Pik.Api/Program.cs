@@ -62,9 +62,14 @@ builder.Services.AddSingleton<IValidadorGoogle, ValidadorGoogle>();
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddScoped<RolloService>();
 
-// Fotos en carpeta privada del servidor
-builder.Services.Configure<AlmacenamientoOptions>(builder.Configuration.GetSection("Almacenamiento"));
-builder.Services.AddSingleton<IAlmacenamientoFotos, AlmacenamientoLocal>();
+// Fotos en carpeta privada del servidor, cifradas con AES-256-GCM.
+// La clave se valida aquí: si falta o no mide 32 bytes, la API no arranca.
+var seccionAlmacen = builder.Configuration.GetSection("Almacenamiento");
+builder.Services.Configure<AlmacenamientoOptions>(seccionAlmacen);
+var claveFotos = ClaveFotos.Desde(seccionAlmacen["ClaveCifrado"]);
+builder.Services.AddSingleton<AlmacenamientoLocal>();
+builder.Services.AddSingleton<IAlmacenamientoFotos>(sp =>
+    new AlmacenamientoCifrado(sp.GetRequiredService<AlmacenamientoLocal>(), claveFotos));
 
 // Revelado: tiempos y tarea en segundo plano
 builder.Services.Configure<ReveladoOptions>(builder.Configuration.GetSection("Revelado"));

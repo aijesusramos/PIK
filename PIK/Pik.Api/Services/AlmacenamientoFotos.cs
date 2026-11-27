@@ -24,6 +24,21 @@ public class AlmacenamientoOptions
 {
     /// <summary>Carpeta de las fotos, relativa a la carpeta del proyecto. Nunca dentro de wwwroot.</summary>
     public string RutaFotos { get; set; } = "almacenamiento/fotos";
+
+    /// <summary>
+    /// Clave AES-256 (32 bytes en Base64) para cifrar las fotos en disco. NUNCA va en
+    /// appsettings ni en el repositorio: en desarrollo con `dotnet user-secrets`, en producción
+    /// con la variable de entorno Almacenamiento__ClaveCifrado (o un gestor de secretos).
+    /// </summary>
+    public string? ClaveCifrado { get; set; }
+}
+
+/// <summary>Formato de las rutas de las fotos (lo comparten el almacenamiento y el cifrado).</summary>
+public static class RutasFotos
+{
+    /// <summary>{usuario}/{rollo}/{foto}{sufijo}{ext}: solo GUIDs, ningún dato del usuario.</summary>
+    public static string Relativa(Guid usuarioId, Guid rolloId, Guid fotoId, string sufijo, string extension) =>
+        $"{usuarioId}/{rolloId}/{fotoId}{sufijo}{extension}";
 }
 
 /// <summary>
@@ -43,7 +58,7 @@ public class AlmacenamientoLocal : IAlmacenamientoFotos
     public async Task<string> GuardarAsync(Guid usuarioId, Guid rolloId, Guid fotoId, string extension,
         Stream contenido, string sufijo = "", CancellationToken ct = default)
     {
-        var relativa = $"{usuarioId}/{rolloId}/{fotoId}{sufijo}{extension}";
+        var relativa = RutasFotos.Relativa(usuarioId, rolloId, fotoId, sufijo, extension);
         var completa = RutaCompleta(relativa);
         Directory.CreateDirectory(Path.GetDirectoryName(completa)!);
 

@@ -12,7 +12,8 @@ namespace Pik.Api.Controllers;
 public class FotosController(
     PikDbContext db,
     RolloService rollos,
-    IAlmacenamientoFotos almacen) : ControllerBase
+    IAlmacenamientoFotos almacen,
+    ILogger<FotosController> logger) : ControllerBase
 {
     private const long TamanoMaximoBytes = 15 * 1024 * 1024; // 15 MB
 
@@ -171,6 +172,16 @@ public class FotosController(
         {
             return NotFound(new ErrorRespuesta("No se encontró el archivo de la foto."));
         }
+        catch (InvalidDataException ex)
+        {
+            // No se pudo descifrar: clave distinta, archivo alterado o movido.
+            logger.LogError(ex, "No se pudo descifrar la foto {FotoId}", id);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new ErrorRespuesta("No se pudo leer la foto."));
+        }
+
+        // Ya descifrada: que ni el navegador ni un proxy guarden una copia.
+        Response.Headers.CacheControl = "no-store";
 
         var nombre = $"pik_{dato.NumeroEnRollo:D2}{(original ? "_original" : "")}{Path.GetExtension(ruta)}";
         return descargar

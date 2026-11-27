@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Identity;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Pik.Api.Data;
@@ -11,8 +11,18 @@ using Pik.Api.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------- Base de datos (SQLite) ----------
+// "Data Source=pik.db" es relativo. SQLite lo resolvería contra la carpeta desde donde se
+// lanzó el proceso, mientras que la configuración y las fotos usan la carpeta del proyecto
+// (ContentRootPath). Si no coinciden (p. ej. con --contentRoot), se crearía un pik.db vacío
+// y parecería que se perdieron los rollos. Por eso se resuelve contra ContentRootPath.
+var cadenaSqlite = new SqliteConnectionStringBuilder(
+    builder.Configuration.GetConnectionString("Pik")
+    ?? throw new InvalidOperationException("Falta ConnectionStrings:Pik en appsettings."));
+if (!Path.IsPathRooted(cadenaSqlite.DataSource) && cadenaSqlite.DataSource != ":memory:")
+    cadenaSqlite.DataSource = Path.Combine(builder.Environment.ContentRootPath, cadenaSqlite.DataSource);
+
 builder.Services.AddDbContext<PikDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("Pik")));
+    options.UseSqlite(cadenaSqlite.ToString()));
 
 // ---------- JWT ----------
 var seccionJwt = builder.Configuration.GetSection("Jwt");
@@ -44,7 +54,11 @@ builder.Services
 builder.Services.AddAuthorization();
 
 // ---------- Servicios de PIK ----------
-builder.Services.AddScoped<IPasswordHasher<Usuario>, PasswordHasher<Usuario>>();
+builder.Services.AddScoped<CuentasService>();
+
+// Inicio de sesión con Google: validar el ID token que manda la app.
+builder.Services.Configure<GoogleOptions>(builder.Configuration.GetSection("Google"));
+builder.Services.AddSingleton<IValidadorGoogle, ValidadorGoogle>();
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddScoped<RolloService>();
 
@@ -77,6 +91,17 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
+// Aplica las migraciones pendientes antes de aceptar peticiones (y antes de que arranque
+// ReveladoWorker). Así una base nueva o desactualizada nunca deja la API sin tablas.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<PikDbContext>();
+    var pendientes = db.Database.GetPendingMigrations().ToList();
+    db.Database.Migrate();
+    app.Logger.LogInformation("Base de datos: {Ruta} (migraciones aplicadas ahora: {Cantidad})",
+        cadenaSqlite.DataSource, pendientes.Count);
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -92,3 +117,6 @@ app.UseAuthorization();  // ¿puedes hacer esto? ([Authorize])
 app.MapControllers();
 
 app.Run();
+
+// Para las pruebas de integración (WebApplicationFactory<Program> en Pik.Api.Tests).
+public partial class Program;

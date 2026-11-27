@@ -3,11 +3,15 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../api/api_client.dart';
 import '../models/modelos.dart';
+import 'inicio_google.dart';
 
-/// Maneja la sesión: registro, login, logout y recordar el token entre aperturas.
+/// Maneja la sesión: entrar con Google, cerrar sesión y recordar el token entre aperturas.
 /// Es un ChangeNotifier: cuando cambia la sesión, la app redibuja la pantalla correcta.
+///
+/// PIK no maneja contraseñas: la app obtiene un ID token de Google y el backend lo valida
+/// con Google y responde con NUESTRO JWT, que es el que se guarda y se usa en la API.
 class AuthService extends ChangeNotifier {
-  AuthService(this._api, {FlutterSecureStorage? storage})
+  AuthService(this._api, {FlutterSecureStorage? storage, this._google})
       : _storage = storage ?? const FlutterSecureStorage() {
     // Si el token venció, la API responde 401 y se cierra la sesión.
     _api.onNoAutorizado = () {
@@ -17,6 +21,7 @@ class AuthService extends ChangeNotifier {
 
   final ApiClient _api;
   final FlutterSecureStorage _storage;
+  final InicioGoogle? _google;
   static const _claveToken = 'pik_token';
 
   Usuario? usuario;
@@ -44,20 +49,11 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<void> login(String email, String password) async {
-    final json = await _api.post('/api/auth/login', {
-      'email': email.trim(),
-      'password': password,
-    }) as Map<String, dynamic>;
-    await _guardarSesion(json);
-  }
-
-  Future<void> registro(String email, String nombreUsuario, String password) async {
-    final json = await _api.post('/api/auth/registro', {
-      'email': email.trim(),
-      'nombreUsuario': nombreUsuario.trim(),
-      'password': password,
-    }) as Map<String, dynamic>;
+  /// Cambia el ID token de Google por nuestro JWT. Si es la primera vez, el backend
+  /// crea la cuenta (o la vincula a una existente con el mismo correo verificado).
+  Future<void> entrarConGoogle(String idToken) async {
+    final json = await _api.post('/api/auth/google', {'idToken': idToken})
+        as Map<String, dynamic>;
     await _guardarSesion(json);
   }
 
@@ -66,6 +62,8 @@ class AuthService extends ChangeNotifier {
     usuario = null;
     await _storage.delete(key: _claveToken);
     notifyListeners();
+    // También en Google, para que la próxima vez se pueda elegir otra cuenta.
+    await _google?.cerrar();
   }
 
   Future<void> _guardarSesion(Map<String, dynamic> json) async {

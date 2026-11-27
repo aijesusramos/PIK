@@ -80,11 +80,22 @@ namespace Pik.Api.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("RutaRevelada")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
                     b.Property<long>("TamanoBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("TamanoBytesRevelada")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("TipoContenido")
                         .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TipoContenidoRevelada")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
@@ -207,18 +218,21 @@ namespace Pik.Api.Migrations
                     b.Property<DateTime>("FechaRegistroUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("GoogleId")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("NombreUsuario")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.HasIndex("GoogleId")
                         .IsUnique();
 
                     b.HasIndex("NombreUsuario")

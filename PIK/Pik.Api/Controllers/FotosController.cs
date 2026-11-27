@@ -24,22 +24,25 @@ public class FotosController(
         };
 
     /// <summary>
-    /// Sube una foto (ya con el filtro aplicado por la app) a un rollo Activo.
-    /// Si es la última que cabe, el rollo se cierra solo.
+    /// Sube una foto a un rollo Activo: la original (sin filtro) y la revelada por la app.
+    /// Si es la última que cabe, el rollo se cierra solo. Reenviar el mismo id devuelve la
+    /// foto ya guardada (200) en lugar de duplicarla.
     /// </summary>
     [HttpPost("api/rollos/{rolloId:guid}/fotos")]
-    [RequestSizeLimit(20 * 1024 * 1024)]
+    [RequestSizeLimit(2 * TamanoMaximoBytes + 2 * 1024 * 1024)] // dos fotos + campos
     public async Task<ActionResult<FotoSubidaRespuesta>> Subir(Guid rolloId, [FromForm] SubirFotoSolicitud solicitud)
     {
-        var archivo = solicitud.Archivo;
-        if (archivo is null || archivo.Length == 0)
-            return BadRequest(new ErrorRespuesta("Falta el archivo de la foto (campo \"archivo\")."));
+        if (solicitud.Id is not { } fotoId || fotoId == Guid.Empty)
+            return BadRequest(new ErrorRespuesta("Falta el id de la foto (campo \"id\")."));
 
-        if (archivo.Length > TamanoMaximoBytes)
-            return BadRequest(new ErrorRespuesta("La foto supera los 15 MB."));
+        if (Validar(solicitud.Archivo, "archivo", out var extension) is { } errorOriginal)
+            return BadRequest(new ErrorRespuesta(errorOriginal));
 
-        if (!TiposPermitidos.TryGetValue(archivo.ContentType, out var extension))
-            return BadRequest(new ErrorRespuesta("Solo se aceptan fotos JPG o PNG."));
+        if (Validar(solicitud.Revelada, "revelada", out var extensionRevelada) is { } errorRevelada)
+            return BadRequest(new ErrorRespuesta(errorRevelada));
+
+        var archivo = solicitud.Archivo!;
+        var revelada = solicitud.Revelada!;
 
         var usuarioId = User.ObtenerUsuarioId();
         var rollo = await db.Rollos.FirstOrDefaultAsync(r => r.Id == rolloId && r.UsuarioId == usuarioId);
@@ -51,20 +54,25 @@ public class FotosController(
         try
         {
             await using var contenido = archivo.OpenReadStream();
-            var foto = await rollos.AgregarFotoAsync(rollo, new NuevaFoto(
-                contenido,
-                archivo.ContentType,
-                extension,
-                archivo.Length,
+            await using var contenidoRevelada = revelada.OpenReadStream();
+            var (foto, creada) = await rollos.AgregarFotoAsync(rollo, new NuevaFoto(
+                fotoId,
+                new ArchivoNuevo(contenido, archivo.ContentType, extension, archivo.Length),
+                new ArchivoNuevo(contenidoRevelada, revelada.ContentType, extensionRevelada, revelada.Length),
                 solicitud.Ancho ?? 0,
                 solicitud.Alto ?? 0,
                 fechaCaptura));
 
             // No se devuelve la URL de la foto: sigue bloqueada hasta que el rollo se revele.
-            return Created($"/api/rollos/{rollo.Id}/fotos", new FotoSubidaRespuesta(
+            var fotos = await db.Fotos.CountAsync(f => f.RolloId == rollo.Id);
+            var respuesta = new FotoSubidaRespuesta(
                 foto.Id,
                 foto.NumeroEnRollo,
-                RolloRespuesta.Desde(rollo, foto.NumeroEnRollo)));
+                RolloRespuesta.Desde(rollo, fotos));
+
+            return creada
+                ? Created($"/api/rollos/{rollo.Id}/fotos", respuesta)
+                : Ok(respuesta); // reintento: ya estaba guardada
         }
         catch (ReglaNegocioException ex)
         {
@@ -101,8 +109,10 @@ public class FotosController(
                 .Where(f => f.RolloId == rolloId)
                 .OrderBy(f => f.NumeroEnRollo)
                 .Select(f => new FotoRespuesta(
-                    f.Id, f.NumeroEnRollo, f.Ancho, f.Alto, f.TamanoBytes,
-                    f.FechaCapturaUtc, "/api/fotos/" + f.Id + "/archivo"))
+                    f.Id, f.NumeroEnRollo, f.Ancho, f.Alto, f.TamanoBytesRevelada ?? f.TamanoBytes,
+                    f.FechaCapturaUtc,
+                    "/api/fotos/" + f.Id + "/archivo",
+                    "/api/fotos/" + f.Id + "/archivo?version=original"))
                 .ToListAsync();
         }
 
@@ -114,12 +124,18 @@ public class FotosController(
     }
 
     /// <summary>
-    /// Devuelve la imagen. 423 (Locked) si el rollo aún no se revela.
+    /// Devuelve la imagen revelada (o la original con ?version=original).
+    /// 423 (Locked) si el rollo aún no se revela, para las dos versiones.
     /// ?descargar=true la envía como archivo descargable.
     /// </summary>
     [HttpGet("api/fotos/{id:guid}/archivo")]
-    public async Task<IActionResult> Archivo(Guid id, [FromQuery] bool descargar = false)
+    public async Task<IActionResult> Archivo(Guid id, [FromQuery] bool descargar = false,
+        [FromQuery] string? version = null)
     {
+        var original = string.Equals(version, "original", StringComparison.OrdinalIgnoreCase);
+        if (version is not null && !original)
+            return BadRequest(new ErrorRespuesta("version solo puede ser \"original\"."));
+
         var usuarioId = User.ObtenerUsuarioId();
         var dato = await db.Fotos
             .Where(f => f.Id == id && f.Rollo.UsuarioId == usuarioId)
@@ -127,6 +143,8 @@ public class FotosController(
             {
                 f.RutaArchivo,
                 f.TipoContenido,
+                f.RutaRevelada,
+                f.TipoContenidoRevelada,
                 f.NumeroEnRollo,
                 f.Rollo.Estado,
                 f.Rollo.FechaFinReveladoUtc
@@ -139,19 +157,38 @@ public class FotosController(
             return StatusCode(StatusCodes.Status423Locked,
                 new ErrorRespuesta("Esta foto aún se está revelando."));
 
+        // Fotos subidas antes del motor de revelado no tienen revelada: se sirve la original.
+        var (ruta, tipo) = original || dato.RutaRevelada is null
+            ? (dato.RutaArchivo, dato.TipoContenido)
+            : (dato.RutaRevelada, dato.TipoContenidoRevelada ?? dato.TipoContenido);
+
         Stream contenido;
         try
         {
-            contenido = almacen.AbrirLectura(dato.RutaArchivo);
+            contenido = almacen.AbrirLectura(ruta);
         }
         catch (IOException)
         {
             return NotFound(new ErrorRespuesta("No se encontró el archivo de la foto."));
         }
 
-        var nombre = $"pik_{dato.NumeroEnRollo:D2}{Path.GetExtension(dato.RutaArchivo)}";
+        var nombre = $"pik_{dato.NumeroEnRollo:D2}{(original ? "_original" : "")}{Path.GetExtension(ruta)}";
         return descargar
-            ? File(contenido, dato.TipoContenido, nombre, enableRangeProcessing: true)
-            : File(contenido, dato.TipoContenido, enableRangeProcessing: true);
+            ? File(contenido, tipo, nombre, enableRangeProcessing: true)
+            : File(contenido, tipo, enableRangeProcessing: true);
+    }
+
+    /// <summary>Valida un archivo de imagen del formulario. Devuelve el mensaje de error o null.</summary>
+    private static string? Validar(IFormFile? archivo, string campo, out string extension)
+    {
+        extension = string.Empty;
+        if (archivo is null || archivo.Length == 0)
+            return $"Falta la imagen del campo \"{campo}\".";
+        if (archivo.Length > TamanoMaximoBytes)
+            return $"La imagen del campo \"{campo}\" supera los 15 MB.";
+        if (!TiposPermitidos.TryGetValue(archivo.ContentType, out var ext))
+            return $"La imagen del campo \"{campo}\" debe ser JPG o PNG.";
+        extension = ext;
+        return null;
     }
 }

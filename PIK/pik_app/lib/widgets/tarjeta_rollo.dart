@@ -1,6 +1,5 @@
 import 'package:material_ui/material_ui.dart';
 
-import '../filtros/filtros.dart';
 import '../models/modelos.dart';
 import '../theme.dart';
 import '../utils/formato.dart';
@@ -98,39 +97,43 @@ class _ChipEstado extends StatelessWidget {
   }
 }
 
-/// Cuadro que muestra el efecto del filtro: un degradado de colores al que se le
-/// aplica la misma matriz que a las fotos (ver filtros.dart).
+/// Cuadro que representa el look de cada filtro con un degradado.
+///
+/// Los colores son los de un mismo degradado base (amarillo, coral, azul, verde y un
+/// tono oscuro) pasado por la función de cada filtro en tools/generate_lut.py, la
+/// misma que genera su LUT. Si cambian los LUTs, hay que recalcularlos.
 class MuestraFiltro extends StatelessWidget {
   const MuestraFiltro({super.key, required this.filtro, this.tamano = 56});
 
   final FiltroRollo filtro;
   final double tamano;
 
+  static const _colores = {
+    FiltroRollo.original: [
+      Color(0xFFE9C449), Color(0xFFCB6C4F), Color(0xFF5FAACF), Color(0xFF6FBE57), Color(0xFF1A2637),
+    ],
+    FiltroRollo.blancoNegro: [
+      Color(0xFFE4E4E4), Color(0xFFB6B6B6), Color(0xFFB9B9B9), Color(0xFFBDBDBD), Color(0xFF282828),
+    ],
+    FiltroRollo.redBlue: [
+      Color(0xFFDAC996), Color(0xFFE77656), Color(0xFF5DB7ED), Color(0xFF95B790), Color(0xFF262F51),
+    ],
+  };
+
   @override
   Widget build(BuildContext context) {
-    Widget muestra = Container(
+    return Container(
       width: tamano,
       height: tamano,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFF2C14E), Color(0xFFE76F51), Color(0xFF5DA9E9), Color(0xFF6BBF59)],
-        ),
-      ),
-    );
-
-    final matriz = matrizDeFiltro(filtro);
-    if (matriz != null) {
-      muestra = ColorFiltered(colorFilter: ColorFilter.matrix(matriz), child: muestra);
-    }
-
-    return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: colorAcento.withValues(alpha: 0.4)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: _colores[filtro]!,
+        ),
       ),
-      child: ClipRRect(borderRadius: BorderRadius.circular(7), child: muestra),
     );
   }
 }

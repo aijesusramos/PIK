@@ -5,18 +5,13 @@ using Pik.Api.Models;
 namespace Pik.Api.Contracts;
 
 // DTOs: lo que la app envía y recibe. Nunca se exponen las entidades directamente
-// (por ejemplo, para no devolver nunca el PasswordHash).
+// (por ejemplo, para no devolver nunca el id de Google ni datos internos).
 
 // ---------- Autenticación ----------
 
-public record RegistroSolicitud(
-    [Required, EmailAddress, MaxLength(256)] string Email,
-    [Required, MinLength(3), MaxLength(50)] string NombreUsuario,
-    [Required, MinLength(8), MaxLength(100)] string Password);
-
-public record LoginSolicitud(
-    [Required, EmailAddress] string Email,
-    [Required] string Password);
+/// <summary>Inicio de sesión con Google: el ID token que la app obtuvo de Google.</summary>
+public record LoginGoogleSolicitud(
+    [Required, MaxLength(4096)] string IdToken);
 
 public record AuthRespuesta(
     string Token,
@@ -70,8 +65,18 @@ public record RolloRespuesta(
 /// <summary>Formulario multipart para subir una foto. Es clase (no record) para el binding de [FromForm].</summary>
 public class SubirFotoSolicitud
 {
-    /// <summary>La imagen ya con el filtro del rollo aplicado (JPG o PNG).</summary>
+    /// <summary>
+    /// Id de la foto, generado por la app (GUID). La app lo usa como semilla del grano al
+    /// revelar, por eso lo necesita antes de subir. Reenviar el mismo Id no duplica la foto.
+    /// </summary>
+    public Guid? Id { get; set; }
+
+    /// <summary>La foto original, sin filtro (JPG o PNG).</summary>
     public IFormFile? Archivo { get; set; }
+
+    /// <summary>La misma foto revelada por la app con el filtro del rollo (JPG o PNG).</summary>
+    public IFormFile? Revelada { get; set; }
+
     public int? Ancho { get; set; }
     public int? Alto { get; set; }
     /// <summary>Cuándo se tomó la foto, en UTC. Si no se envía, se usa la hora de subida.</summary>
@@ -83,6 +88,8 @@ public record FotoSubidaRespuesta(
     int NumeroEnRollo,
     RolloRespuesta Rollo);
 
+/// <param name="UrlArchivo">La foto revelada (lo que ve el usuario).</param>
+/// <param name="UrlOriginal">La foto original, sin filtro.</param>
 public record FotoRespuesta(
     Guid Id,
     int NumeroEnRollo,
@@ -90,7 +97,8 @@ public record FotoRespuesta(
     int Alto,
     long TamanoBytes,
     DateTime FechaCapturaUtc,
-    string UrlArchivo);
+    string UrlArchivo,
+    string UrlOriginal);
 
 public record FotosDeRolloRespuesta(
     RolloRespuesta Rollo,

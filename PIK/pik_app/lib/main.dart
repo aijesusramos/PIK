@@ -6,6 +6,8 @@ import 'screens/inicio_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
 import 'services/fotos_service.dart';
+import 'services/inicio_google.dart';
+import 'services/revelador.dart';
 import 'services/rollos_service.dart';
 import 'theme.dart';
 
@@ -13,15 +15,19 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   final api = ApiClient();
-  final auth = AuthService(api)..iniciar();
+  final google = InicioGoogle();
+  final auth = AuthService(api, google: google)..iniciar();
 
   runApp(
     MultiProvider(
       providers: [
         Provider<ApiClient>.value(value: api),
+        Provider<InicioGoogle>.value(value: google),
         ChangeNotifierProvider<AuthService>.value(value: auth),
         Provider<RollosService>(create: (_) => RollosService(api)),
         Provider<FotosService>(create: (_) => FotosService(api)),
+        // El motor de revelado se carga una sola vez para toda la app.
+        Provider<Revelador>(create: (_) => Revelador(), dispose: (_, r) => r.dispose()),
       ],
       child: const PikApp(),
     ),

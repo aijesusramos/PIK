@@ -3,8 +3,29 @@ import 'dart:typed_data';
 import 'package:http_parser/http_parser.dart';
 
 import '../api/api_client.dart';
-import '../filtros/filtros.dart';
+import '../fotos/preparar_foto.dart';
 import '../models/modelos.dart';
+
+/// Una foto tomada y revelada, lista para subir (o para reintentar si falló la red).
+class FotoParaSubir {
+  const FotoParaSubir({
+    required this.id,
+    required this.rolloId,
+    required this.original,
+    required this.revelada,
+    required this.fechaCaptura,
+  });
+
+  /// Generado por la app (nuevoIdFoto). Es la semilla del grano y hace que
+  /// reintentar la subida no duplique la foto.
+  final String id;
+  final String rolloId;
+  final FotoPreparada original;
+
+  /// JPEG revelado por PikEngine con el filtro del rollo.
+  final Uint8List revelada;
+  final DateTime fechaCaptura;
+}
 
 /// Llamadas a las rutas de fotos (FotosController en la API).
 class FotosService {
@@ -12,20 +33,23 @@ class FotosService {
 
   final ApiClient _api;
 
-  /// Sube una foto (ya con el filtro aplicado) a un rollo Activo.
-  /// [fechaCaptura] se envía en UTC, como espera la API.
-  Future<FotoSubida> subir(String rolloId, FotoProcesada foto, DateTime fechaCaptura) async {
-    final json = await _api.postArchivo(
-      '/api/rollos/$rolloId/fotos',
-      campoArchivo: 'archivo',
-      bytes: foto.bytes,
-      nombreArchivo: 'foto.jpg',
-      // La API revisa el Content-Type del archivo: solo acepta image/jpeg o image/png.
-      tipo: MediaType('image', 'jpeg'),
+  /// Sube la original y la revelada a un rollo Activo, en una sola petición.
+  /// Si ya se había subido (mismo id), la API responde 200 con la misma foto.
+  Future<FotoSubida> subir(FotoParaSubir foto) async {
+    // La API revisa el Content-Type de cada archivo: solo acepta image/jpeg o image/png.
+    final jpeg = MediaType('image', 'jpeg');
+    final json = await _api.postArchivos(
+      '/api/rollos/${foto.rolloId}/fotos',
+      archivos: [
+        ArchivoSubida('archivo', foto.original.bytes, 'original.jpg', jpeg),
+        ArchivoSubida('revelada', foto.revelada, 'revelada.jpg', jpeg),
+      ],
       campos: {
-        'ancho': '${foto.ancho}',
-        'alto': '${foto.alto}',
-        'fechaCapturaUtc': fechaCaptura.toUtc().toIso8601String(),
+        'id': foto.id,
+        'ancho': '${foto.original.ancho}',
+        'alto': '${foto.original.alto}',
+        // UTC, como espera la API.
+        'fechaCapturaUtc': foto.fechaCaptura.toUtc().toIso8601String(),
       },
     ) as Map<String, dynamic>;
     return FotoSubida.fromJson(json);

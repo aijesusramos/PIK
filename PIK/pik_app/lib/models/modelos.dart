@@ -136,6 +136,7 @@ class FotoInfo {
     required this.alto,
     required this.fechaCaptura,
     required this.urlArchivo,
+    required this.urlOriginal,
   });
 
   final String id;
@@ -144,8 +145,11 @@ class FotoInfo {
   final int alto;
   final DateTime fechaCaptura;
 
-  /// Ruta relativa de la imagen en la API ("/api/fotos/{id}/archivo"). Requiere el JWT.
+  /// Ruta relativa de la imagen REVELADA en la API ("/api/fotos/{id}/archivo"). Requiere el JWT.
   final String urlArchivo;
+
+  /// Ruta de la foto original, sin filtro ("...archivo?version=original").
+  final String urlOriginal;
 
   /// Nombre (sin extensión) al descargar: pik_01, pik_02... (igual que la API).
   String get nombreArchivo => 'pik_${numeroEnRollo.toString().padLeft(2, '0')}';
@@ -157,6 +161,7 @@ class FotoInfo {
         alto: j['alto'] as int,
         fechaCaptura: DateTime.parse(j['fechaCapturaUtc'] as String),
         urlArchivo: j['urlArchivo'] as String,
+        urlOriginal: j['urlOriginal'] as String,
       );
 }
 

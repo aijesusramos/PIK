@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show compute, kIsWeb;
@@ -6,10 +7,13 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../api/api_client.dart';
-import '../filtros/filtros.dart';
+import '../engine/semilla.dart';
+import '../fotos/borrar_captura.dart';
+import '../fotos/preparar_foto.dart';
 import '../models/modelos.dart';
 import '../services/fotos_service.dart';
 import '../services/mis_rollos.dart';
+import '../services/revelador.dart';
 import '../theme.dart';
 import '../widgets/panel_rollo.dart';
 import '../widgets/tarjeta_rollo.dart';
@@ -23,9 +27,11 @@ import 'nuevo_rollo_screen.dart';
 ///   │ [⚡][⟲]     ( ◉ )      [rollo]│  ← rollo activo, o + para crear uno
 ///   └──────────────────────────────┘
 ///
-/// Como en una cámara de rollo, **la foto no se muestra al tomarla**: solo avanza
-/// el contador. Cada disparo: capturar → aplicar el filtro → subir → avanzar.
+/// Como en una cámara de rollo, **la foto no se muestra al tomarla** ni el visor muestra
+/// el filtro: solo avanza el contador. Cada disparo:
+///   capturar → preparar la original → revelarla (PikEngine) → subir las dos → avanzar.
 /// Mientras eso pasa el obturador queda bloqueado ("avanzando la película").
+/// La API guarda las dos bloqueadas hasta que se cumple el tiempo de revelado.
 class CamaraScreen extends StatefulWidget {
   const CamaraScreen({super.key, required this.visible, required this.onAbrirGaleria});
 
@@ -58,10 +64,9 @@ class _CamaraScreenState extends State<CamaraScreen>
   bool _avanzando = false;
   bool _destello = false;
 
-  /// Foto que no se pudo subir (sin red, API apagada...). Se puede reintentar.
-  FotoProcesada? _pendiente;
-  DateTime? _fechaPendiente;
-  String? _rolloPendiente;
+  /// Foto ya revelada que no se pudo subir (sin red, API apagada...). Se reintenta
+  /// con el mismo id, así la API no la duplica si la primera vez sí llegó.
+  FotoParaSubir? _pendiente;
 
   bool get _debeEstarAbierta => widget.visible && _appEnPrimerPlano;
 
@@ -69,6 +74,10 @@ class _CamaraScreenState extends State<CamaraScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Carga el shader de revelado desde ahora, para que la primera foto no espere.
+    context.read<Revelador>().precargar();
+    // Borra capturas que hayan quedado en el teléfono si la app se cerró a medio disparo.
+    limpiarCapturasViejas();
     if (_debeEstarAbierta) _iniciarCamaras();
   }
 
@@ -140,7 +149,7 @@ class _CamaraScreenState extends State<CamaraScreen>
 
     final c = CameraController(
       _camaras[_indiceCamara],
-      ResolutionPreset.veryHigh, // 1080p; procesarFoto reduce si llega algo más grande
+      ResolutionPreset.veryHigh, // 1080p; prepararOriginal reduce si llega algo más grande
       enableAudio: false, // solo fotos: así no se pide permiso de micrófono
     );
     try {
@@ -234,6 +243,7 @@ class _CamaraScreenState extends State<CamaraScreen>
   Future<void> _disparar() async {
     final misRollos = context.read<MisRollos>();
     final fotos = context.read<FotosService>();
+    final revelador = context.read<Revelador>();
     final rollo = misRollos.activo;
 
     if (rollo == null) {
@@ -254,15 +264,39 @@ class _CamaraScreenState extends State<CamaraScreen>
     try {
       final archivo = await c.takePicture();
       final fecha = DateTime.now().toUtc();
-      final bytes = await archivo.readAsBytes();
-      // En el teléfono, compute procesa la foto en otro hilo (isolate) para que
-      // la interfaz no se congele. En web corre en el mismo hilo.
-      final foto = await compute(procesarFoto, (bytes, rollo.filtro));
-      await _subir(misRollos, fotos, rollo, foto, fecha);
+      final Uint8List bytes;
+      try {
+        bytes = await archivo.readAsBytes();
+      } finally {
+        // El plugin dejó la captura en bruto (con EXIF y GPS) en un archivo temporal:
+        // se borra ya, para que no quede ninguna copia en el teléfono antes del revelado.
+        await borrarCaptura(archivo);
+      }
+
+      // 1. La original: enderezada, reducida y sin EXIF. En el teléfono, compute lo hace
+      //    en otro hilo (isolate) para que la interfaz no se congele; en web, en el mismo.
+      final original = await compute(prepararOriginal, bytes);
+
+      // 2. El id se genera aquí porque es la semilla del grano al revelar.
+      final id = nuevoIdFoto();
+      final revelada = await revelador.revelar(original.bytes, rollo.filtro, id);
+
+      // 3. Se suben las dos.
+      await _subir(misRollos, fotos, FotoParaSubir(
+        id: id,
+        rolloId: rollo.id,
+        original: original,
+        revelada: revelada,
+        fechaCaptura: fecha,
+      ));
     } on CameraException catch (e) {
       _mostrarMensaje('No se pudo tomar la foto (${e.description ?? e.code}).');
     } on FormatException catch (e) {
       _mostrarMensaje(e.message);
+    } catch (e) {
+      // _subir ya maneja los errores de la API; lo que llega aquí es del revelado
+      // (por ejemplo, el shader no cargó). No se sube una foto sin revelar.
+      _mostrarMensaje('No se pudo revelar la foto: $e');
     } finally {
       if (mounted) setState(() => _avanzando = false);
     }
@@ -272,10 +306,9 @@ class _CamaraScreenState extends State<CamaraScreen>
     final misRollos = context.read<MisRollos>();
     final fotos = context.read<FotosService>();
     final foto = _pendiente;
-    final fecha = _fechaPendiente;
     final rollo = misRollos.activo;
-    if (foto == null || fecha == null || _avanzando) return;
-    if (rollo == null || rollo.id != _rolloPendiente) {
+    if (foto == null || _avanzando) return;
+    if (rollo == null || rollo.id != foto.rolloId) {
       // El rollo ya no está activo: la foto ya no tiene dónde guardarse.
       _descartarPendiente();
       _mostrarMensaje('El rollo de esa foto ya se cerró.');
@@ -283,27 +316,17 @@ class _CamaraScreenState extends State<CamaraScreen>
     }
     setState(() => _avanzando = true);
     try {
-      await _subir(misRollos, fotos, rollo, foto, fecha);
+      await _subir(misRollos, fotos, foto);
     } finally {
       if (mounted) setState(() => _avanzando = false);
     }
   }
 
-  void _descartarPendiente() => setState(() {
-        _pendiente = null;
-        _fechaPendiente = null;
-        _rolloPendiente = null;
-      });
+  void _descartarPendiente() => setState(() => _pendiente = null);
 
-  Future<void> _subir(
-    MisRollos misRollos,
-    FotosService fotos,
-    Rollo rollo,
-    FotoProcesada foto,
-    DateTime fecha,
-  ) async {
+  Future<void> _subir(MisRollos misRollos, FotosService fotos, FotoParaSubir foto) async {
     try {
-      final subida = await fotos.subir(rollo.id, foto, fecha);
+      final subida = await fotos.subir(foto);
       misRollos.actualizar(subida.rollo); // la galería también se entera
       if (!mounted) return;
       _descartarPendiente();
@@ -318,11 +341,7 @@ class _CamaraScreenState extends State<CamaraScreen>
         _mostrarMensaje('No se guardó la foto: ${e.mensaje}');
         return;
       }
-      setState(() {
-        _pendiente = foto;
-        _fechaPendiente = fecha;
-        _rolloPendiente = rollo.id;
-      });
+      setState(() => _pendiente = foto);
       _mostrarMensaje('No se pudo guardar la foto: ${e.mensaje}');
     }
   }
@@ -366,7 +385,7 @@ class _CamaraScreenState extends State<CamaraScreen>
         child: Column(
           children: [
             _barraSuperior(activo),
-            Expanded(child: Center(child: _visor(activo))),
+            Expanded(child: Center(child: _visor())),
             if (_pendiente != null) _avisoPendiente(),
             _barraInferior(misRollos, activo),
           ],
@@ -401,7 +420,7 @@ class _CamaraScreenState extends State<CamaraScreen>
     );
   }
 
-  Widget _visor(Rollo? activo) {
+  Widget _visor() {
     if (_errorCamara != null) {
       return Padding(
         padding: const EdgeInsets.all(32),
@@ -423,13 +442,9 @@ class _CamaraScreenState extends State<CamaraScreen>
       return const CircularProgressIndicator();
     }
 
-    // La vista previa muestra el filtro del rollo activo (en el teléfono; en web
-    // el navegador no lo permite). Sin rollo, se ve normal.
-    final matriz = activo == null ? null : matrizDeFiltro(activo.filtro);
-    Widget vista = CameraPreview(c);
-    if (matriz != null) {
-      vista = ColorFiltered(colorFilter: ColorFilter.matrix(matriz), child: vista);
-    }
+    // El visor muestra la escena sin filtro, como una cámara de rollo real:
+    // el look del filtro solo se descubre al revelar.
+    final vista = CameraPreview(c);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),

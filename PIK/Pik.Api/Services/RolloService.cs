@@ -21,15 +21,23 @@ public class ReveladoOptions
     public int IntervaloRevisionSegundos { get; set; } = 30;
 }
 
-/// <summary>Datos de una foto recibida, ya validados por el controlador.</summary>
+/// <summary>Un archivo de imagen recibido, ya validado por el controlador.</summary>
+public record ArchivoNuevo(Stream Contenido, string TipoContenido, string Extension, long TamanoBytes);
+
+/// <summary>
+/// Datos de una foto recibida, ya validados por el controlador.
+/// El Id lo genera la app: lo usa como semilla del grano al revelar, antes de subir.
+/// </summary>
 public record NuevaFoto(
-    Stream Contenido,
-    string TipoContenido,
-    string Extension,
-    long TamanoBytes,
+    Guid Id,
+    ArchivoNuevo Original,
+    ArchivoNuevo Revelada,
     int Ancho,
     int Alto,
     DateTime FechaCapturaUtc);
+
+/// <summary>Resultado de agregar una foto. Creada = false si ya existía (reintento).</summary>
+public record ResultadoFoto(Foto Foto, bool Creada);
 
 /// <summary>
 /// Reglas de negocio de los rollos. La usan los controladores y la tarea en segundo plano.
@@ -89,15 +97,28 @@ public class RolloService(
     // ---------- Agregar foto ----------
 
     /// <summary>
-    /// Agrega una foto a un rollo Activo. Si con ella se llena, el rollo se cierra
-    /// automáticamente (pasa a Revelando o a En cola).
+    /// Agrega una foto (original + revelada) a un rollo Activo. Si con ella se llena, el
+    /// rollo se cierra automáticamente (pasa a Revelando o a En cola).
+    ///
+    /// Es idempotente: si ya existe una foto con ese Id en este rollo (la app reintentó
+    /// porque se perdió la respuesta), la devuelve sin duplicarla.
     /// </summary>
-    public async Task<Foto> AgregarFotoAsync(Rollo rollo, NuevaFoto nueva)
+    public async Task<ResultadoFoto> AgregarFotoAsync(Rollo rollo, NuevaFoto nueva)
     {
         await using var tx = await IniciarTransaccionAsync();
 
         // Releer dentro de la transacción: el estado pudo cambiar desde que se cargó.
         await db.Entry(rollo).ReloadAsync();
+
+        // Antes que las reglas del rollo: el reintento de la última foto llega con el
+        // rollo ya cerrado y debe responder igual que la primera vez.
+        var existente = await db.Fotos.FirstOrDefaultAsync(f => f.Id == nueva.Id);
+        if (existente is not null)
+        {
+            if (existente.RolloId != rollo.Id)
+                throw new ReglaNegocioException("Ya existe una foto con ese id.");
+            return new ResultadoFoto(existente, Creada: false);
+        }
 
         if (rollo.Estado != EstadoRollo.Activo)
             throw new ReglaNegocioException("Este rollo ya está cerrado. No se pueden agregar más fotos.");
@@ -108,21 +129,28 @@ public class RolloService(
 
         var foto = new Foto
         {
+            Id = nueva.Id,
             RolloId = rollo.Id,
             NumeroEnRollo = tomadas + 1,
-            TipoContenido = nueva.TipoContenido,
-            TamanoBytes = nueva.TamanoBytes,
+            TipoContenido = nueva.Original.TipoContenido,
+            TamanoBytes = nueva.Original.TamanoBytes,
+            TipoContenidoRevelada = nueva.Revelada.TipoContenido,
+            TamanoBytesRevelada = nueva.Revelada.TamanoBytes,
             Ancho = nueva.Ancho,
             Alto = nueva.Alto,
             FechaCapturaUtc = nueva.FechaCapturaUtc
         };
 
-        // Primero el archivo, luego la base. Si la base falla, se borra el archivo.
+        // Primero los archivos, luego la base. Si algo falla, se borran los archivos.
         foto.RutaArchivo = await almacen.GuardarAsync(
-            rollo.UsuarioId, rollo.Id, foto.Id, nueva.Extension, nueva.Contenido);
+            rollo.UsuarioId, rollo.Id, foto.Id, nueva.Original.Extension, nueva.Original.Contenido);
 
         try
         {
+            foto.RutaRevelada = await almacen.GuardarAsync(
+                rollo.UsuarioId, rollo.Id, foto.Id, nueva.Revelada.Extension,
+                nueva.Revelada.Contenido, sufijo: "_revelada");
+
             db.Fotos.Add(foto);
             await db.SaveChangesAsync();
 
@@ -134,10 +162,11 @@ public class RolloService(
         catch
         {
             almacen.Eliminar(foto.RutaArchivo);
+            if (foto.RutaRevelada is not null) almacen.Eliminar(foto.RutaRevelada);
             throw;
         }
 
-        return foto;
+        return new ResultadoFoto(foto, Creada: true);
     }
 
     // ---------- Cerrar ----------
@@ -160,8 +189,11 @@ public class RolloService(
         var ahora = DateTime.UtcNow;
         rollo.FechaCierreUtc = ahora;
 
+        // Un rollo cuyo tiempo ya terminó no ocupa lugar, aunque la tarea en segundo plano
+        // todavía no lo haya marcado como Revelado (la hora manda, igual que en EstaRevelado).
         var revelando = await db.Rollos.CountAsync(r =>
-            r.UsuarioId == rollo.UsuarioId && r.Estado == EstadoRollo.Revelando);
+            r.UsuarioId == rollo.UsuarioId && r.Estado == EstadoRollo.Revelando
+            && r.FechaFinReveladoUtc > ahora);
 
         if (revelando < ReglasRollo.MaxRollosRevelando)
             IniciarRevelado(rollo, ahora);
@@ -177,6 +209,12 @@ public class RolloService(
     /// <summary>
     /// 1) Marca como Revelado todo rollo cuyo tiempo ya terminó y crea su notificación.
     /// 2) Para cada usuario con rollos En cola, inicia los que quepan (máximo 2 revelándose).
+    ///
+    /// Cada rollo de la cola empieza a revelarse en el momento en que SE LIBERÓ el lugar
+    /// (el fin del rollo que terminó), no cuando corre esta tarea. Así, si el servidor
+    /// estuvo apagado, la cola no se retrasa: un rollo puede empezar en el pasado e
+    /// incluso terminar ya, liberando a su vez su lugar para el siguiente (en cadena).
+    ///
     /// Devuelve cuántos rollos se revelaron.
     /// </summary>
     public async Task<int> ProcesarReveladosAsync(DateTime ahoraUtc)
@@ -188,18 +226,14 @@ public class RolloService(
             .ToListAsync();
 
         foreach (var rollo in terminados)
-        {
-            rollo.Estado = EstadoRollo.Revelado;
-            db.Notificaciones.Add(new Notificacion
-            {
-                UsuarioId = rollo.UsuarioId,
-                RolloId = rollo.Id,
-                Tipo = TipoNotificacion.RolloRevelado,
-                Titulo = "¡Tu rollo está listo!",
-                Mensaje = $"Tu rollo \"{rollo.Titulo}\" ya se reveló."
-            });
-        }
+            MarcarRevelado(rollo);
         await db.SaveChangesAsync();
+        var revelados = terminados.Count;
+
+        // Hora en que se liberó cada lugar, por usuario: el fin de cada rollo que terminó.
+        var liberados = terminados
+            .GroupBy(r => r.UsuarioId)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.FechaFinReveladoUtc!.Value).ToList());
 
         var usuariosConCola = await db.Rollos
             .Where(r => r.Estado == EstadoRollo.EnCola)
@@ -215,28 +249,65 @@ public class RolloService(
             var libres = ReglasRollo.MaxRollosRevelando - revelando;
             if (libres <= 0) continue;
 
-            var siguientes = await db.Rollos
+            // Lugares libres, del que se liberó primero al último. Si hay un lugar libre
+            // sin un rollo que lo haya liberado en esta vuelta, se toma como libre "ahora".
+            var lugares = new PriorityQueue<DateTime, DateTime>();
+            foreach (var hora in (liberados.GetValueOrDefault(usuarioId) ?? []).Order().Take(libres))
+                lugares.Enqueue(hora, hora);
+            while (lugares.Count < libres)
+                lugares.Enqueue(ahoraUtc, ahoraUtc);
+
+            var cola = await db.Rollos
                 .Where(r => r.UsuarioId == usuarioId && r.Estado == EstadoRollo.EnCola)
                 .OrderBy(r => r.FechaCierreUtc)
-                .Take(libres)
                 .ToListAsync();
 
-            foreach (var rollo in siguientes)
-                IniciarRevelado(rollo, ahoraUtc);
+            foreach (var rollo in cola)
+            {
+                if (!lugares.TryDequeue(out var libreDesde, out _)) break;
+
+                // Empieza cuando se liberó el lugar, pero nunca antes de que se cerrara.
+                var inicio = rollo.FechaCierreUtc is { } cierre && cierre > libreDesde ? cierre : libreDesde;
+                IniciarRevelado(rollo, inicio);
+
+                // El servidor estuvo apagado lo suficiente: este también ya terminó.
+                if (rollo.FechaFinReveladoUtc <= ahoraUtc)
+                {
+                    MarcarRevelado(rollo);
+                    revelados++;
+                    var fin = rollo.FechaFinReveladoUtc!.Value;
+                    lugares.Enqueue(fin, fin); // su lugar queda libre para el siguiente
+                }
+            }
         }
         await db.SaveChangesAsync();
 
         if (tx is not null) await tx.CommitAsync();
-        return terminados.Count;
+        return revelados;
+    }
+
+    /// <summary>Marca el rollo como Revelado y crea la notificación para el usuario.</summary>
+    private void MarcarRevelado(Rollo rollo)
+    {
+        rollo.Estado = EstadoRollo.Revelado;
+        db.Notificaciones.Add(new Notificacion
+        {
+            UsuarioId = rollo.UsuarioId,
+            RolloId = rollo.Id,
+            Tipo = TipoNotificacion.RolloRevelado,
+            Titulo = "¡Tu rollo está listo!",
+            Mensaje = $"Tu rollo \"{rollo.Titulo}\" ya se reveló."
+        });
     }
 
     /// <summary>Pasa el rollo a Revelando y calcula cuándo termina según su capacidad.</summary>
-    public void IniciarRevelado(Rollo rollo, DateTime ahoraUtc)
+    /// <param name="inicioUtc">Cuándo empieza el revelado (puede ser en el pasado, ver la cola).</param>
+    public void IniciarRevelado(Rollo rollo, DateTime inicioUtc)
     {
         var horas = ReglasRollo.TiempoRevelado(rollo.Capacidad).TotalHours;
         rollo.Estado = EstadoRollo.Revelando;
-        rollo.FechaInicioReveladoUtc = ahoraUtc;
-        rollo.FechaFinReveladoUtc = ahoraUtc + TimeSpan.FromMinutes(horas * opciones.Value.MinutosPorHora);
+        rollo.FechaInicioReveladoUtc = inicioUtc;
+        rollo.FechaFinReveladoUtc = inicioUtc + TimeSpan.FromMinutes(horas * opciones.Value.MinutosPorHora);
     }
 
     /// <summary>

@@ -8,9 +8,12 @@ namespace Pik.Api.Services;
 /// </summary>
 public interface IAlmacenamientoFotos
 {
-    /// <summary>Guarda el archivo y devuelve su ruta relativa (la que se guarda en la base).</summary>
+    /// <summary>
+    /// Guarda el archivo y devuelve su ruta relativa (la que se guarda en la base).
+    /// [sufijo] distingue versiones de la misma foto: "" = original, "_revelada" = revelada.
+    /// </summary>
     Task<string> GuardarAsync(Guid usuarioId, Guid rolloId, Guid fotoId, string extension,
-        Stream contenido, CancellationToken ct = default);
+        Stream contenido, string sufijo = "", CancellationToken ct = default);
 
     Stream AbrirLectura(string rutaRelativa);
 
@@ -23,7 +26,10 @@ public class AlmacenamientoOptions
     public string RutaFotos { get; set; } = "almacenamiento/fotos";
 }
 
-/// <summary>Almacenamiento en una carpeta privada del servidor: almacenamiento/fotos/{usuario}/{rollo}/{foto}.jpg</summary>
+/// <summary>
+/// Almacenamiento en una carpeta privada del servidor:
+/// almacenamiento/fotos/{usuario}/{rollo}/{foto}.jpg (original) y {foto}_revelada.jpg
+/// </summary>
 public class AlmacenamientoLocal : IAlmacenamientoFotos
 {
     private readonly string _raiz;
@@ -35,9 +41,9 @@ public class AlmacenamientoLocal : IAlmacenamientoFotos
     }
 
     public async Task<string> GuardarAsync(Guid usuarioId, Guid rolloId, Guid fotoId, string extension,
-        Stream contenido, CancellationToken ct = default)
+        Stream contenido, string sufijo = "", CancellationToken ct = default)
     {
-        var relativa = $"{usuarioId}/{rolloId}/{fotoId}{extension}";
+        var relativa = $"{usuarioId}/{rolloId}/{fotoId}{sufijo}{extension}";
         var completa = RutaCompleta(relativa);
         Directory.CreateDirectory(Path.GetDirectoryName(completa)!);
 

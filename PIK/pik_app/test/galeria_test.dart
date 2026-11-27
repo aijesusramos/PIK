@@ -32,6 +32,7 @@ Map<String, dynamic> fotoJson(int n) => {
       'tamanoBytes': 123456,
       'fechaCapturaUtc': '2026-11-25T10:1$n:00Z',
       'urlArchivo': '/api/fotos/foto-$n/archivo',
+      'urlOriginal': '/api/fotos/foto-$n/archivo?version=original',
     };
 
 /// Respuesta JSON en UTF-8, como la de la API.
@@ -53,6 +54,7 @@ void main() {
       expect(datos.bloqueado, isFalse);
       expect(datos.fotos, hasLength(2));
       expect(datos.fotos[1].urlArchivo, '/api/fotos/foto-2/archivo');
+      expect(datos.fotos[1].urlOriginal, '/api/fotos/foto-2/archivo?version=original');
       expect(datos.fotos[0].nombreArchivo, 'pik_01');
     });
 

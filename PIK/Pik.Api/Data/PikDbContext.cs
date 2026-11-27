@@ -38,7 +38,9 @@ public class PikDbContext : DbContext
             e.HasIndex(u => u.NombreUsuario).IsUnique();
             e.Property(u => u.Email).HasMaxLength(256).IsRequired();
             e.Property(u => u.NombreUsuario).HasMaxLength(50).IsRequired();
-            e.Property(u => u.PasswordHash).IsRequired();
+            // Único: una cuenta de Google = un usuario de PIK. (SQLite permite varios NULL.)
+            e.HasIndex(u => u.GoogleId).IsUnique();
+            e.Property(u => u.GoogleId).HasMaxLength(255);
         });
 
         modelBuilder.Entity<Rollo>(e =>
@@ -69,6 +71,8 @@ public class PikDbContext : DbContext
             e.HasIndex(f => new { f.RolloId, f.NumeroEnRollo }).IsUnique();
             e.Property(f => f.RutaArchivo).HasMaxLength(500).IsRequired();
             e.Property(f => f.TipoContenido).HasMaxLength(100);
+            e.Property(f => f.RutaRevelada).HasMaxLength(500);
+            e.Property(f => f.TipoContenidoRevelada).HasMaxLength(100);
         });
 
         modelBuilder.Entity<Dispositivo>(e =>

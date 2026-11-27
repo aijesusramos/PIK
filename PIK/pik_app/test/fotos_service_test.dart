@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:pik_app/api/api_client.dart';
-import 'package:pik_app/filtros/filtros.dart';
+import 'package:pik_app/fotos/preparar_foto.dart';
 import 'package:pik_app/models/modelos.dart';
 import 'package:pik_app/services/fotos_service.dart';
 
@@ -27,9 +27,15 @@ Map<String, dynamic> rolloJson({required String estado, required int tomadas}) =
     };
 
 void main() {
-  final foto = FotoProcesada(Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xD9]), 1920, 1080);
+  final foto = FotoParaSubir(
+    id: '3f2a7c1e-9b0d-4c5e-8a1b-0123456789ab',
+    rolloId: 'rollo-1',
+    original: FotoPreparada(Uint8List.fromList([0xFF, 0xD8, 0x01, 0xFF, 0xD9]), 1920, 1080),
+    revelada: Uint8List.fromList([0xFF, 0xD8, 0x02, 0xFF, 0xD9]),
+    fechaCaptura: DateTime.utc(2026, 11, 25, 12),
+  );
 
-  test('Sube la foto como multipart con los campos que espera la API', () async {
+  test('Sube original y revelada en un multipart con los campos que espera la API', () async {
     late http.Request enviada;
     final cliente = MockClient((peticion) async {
       enviada = peticion;
@@ -44,7 +50,7 @@ void main() {
     });
     final api = ApiClient(client: cliente)..token = 'mi-token';
 
-    final subida = await FotosService(api).subir('rollo-1', foto, DateTime.utc(2026, 11, 25, 12));
+    final subida = await FotosService(api).subir(foto);
 
     expect(enviada.method, 'POST');
     expect(enviada.url.path, '/api/rollos/rollo-1/fotos');
@@ -52,8 +58,15 @@ void main() {
     expect(enviada.headers['content-type'], startsWith('multipart/form-data'));
 
     final cuerpo = latin1.decode(enviada.bodyBytes);
-    expect(cuerpo, contains('name="archivo"; filename="foto.jpg"'));
-    expect(cuerpo.toLowerCase(), contains('content-type: image/jpeg'));
+    expect(cuerpo, contains('name="archivo"; filename="original.jpg"'));
+    expect(cuerpo, contains('name="revelada"; filename="revelada.jpg"'));
+    // Los dos archivos van como image/jpeg (la API lo revisa).
+    expect('content-type: image/jpeg'.allMatches(cuerpo.toLowerCase()), hasLength(2));
+    // Cada campo lleva sus propios bytes (0x01 = original, 0x02 = revelada).
+    // (el paquete http escribe "content-type" antes de "content-disposition" en cada parte).
+    expect(cuerpo, contains('filename="original.jpg"\r\n\r\n\xFF\xD8\x01'));
+    expect(cuerpo, contains('filename="revelada.jpg"\r\n\r\n\xFF\xD8\x02'));
+    expect(cuerpo, contains('name="id"\r\n\r\n3f2a7c1e-9b0d-4c5e-8a1b-0123456789ab'));
     expect(cuerpo, contains('name="ancho"\r\n\r\n1920'));
     expect(cuerpo, contains('name="alto"\r\n\r\n1080'));
     expect(cuerpo, contains('2026-11-25T12:00:00.000Z'));
@@ -74,7 +87,7 @@ void main() {
           )),
     );
 
-    final subida = await FotosService(api).subir('rollo-1', foto, DateTime.now());
+    final subida = await FotosService(api).subir(foto);
     expect(subida.rollo.estado, EstadoRollo.revelando);
   });
 
@@ -89,7 +102,7 @@ void main() {
     );
 
     expect(
-      () => FotosService(api).subir('rollo-1', foto, DateTime.now()),
+      () => FotosService(api).subir(foto),
       throwsA(isA<ApiException>()
           .having((e) => e.statusCode, 'statusCode', 409)
           .having((e) => e.mensaje, 'mensaje', contains('ya está cerrado'))),

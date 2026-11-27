@@ -9,7 +9,13 @@ public class Usuario
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Email { get; set; } = string.Empty;
     public string NombreUsuario { get; set; } = string.Empty;
-    public string PasswordHash { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Id de la cuenta de Google ("sub" del ID token). Es lo que identifica al usuario al
+    /// iniciar sesión: el correo de Google puede cambiar, el sub no. Null solo en cuentas
+    /// de antes de Google que todavía no se han vinculado.
+    /// </summary>
+    public string? GoogleId { get; set; }
     public DateTime FechaRegistroUtc { get; set; } = DateTime.UtcNow;
 
     public List<Rollo> Rollos { get; set; } = new();
@@ -55,10 +61,20 @@ public class Foto
     /// <summary>Posición dentro del rollo: de 1 a la capacidad.</summary>
     public int NumeroEnRollo { get; set; }
 
+    // ---- Original: la foto tal como se tomó (sin filtro). Se conserva siempre. ----
+
     /// <summary>Ruta relativa dentro de la carpeta privada de almacenamiento (fuera de wwwroot).</summary>
     public string RutaArchivo { get; set; } = string.Empty;
     public string TipoContenido { get; set; } = "image/jpeg";
     public long TamanoBytes { get; set; }
+
+    // ---- Revelada: la original pasada por el motor de revelado de la app (filtro del rollo). ----
+    // La app la revela al capturar y la sube junto con la original; queda bloqueada igual que
+    // la original hasta FechaFinReveladoUtc. Es null en fotos subidas antes de existir el motor.
+
+    public string? RutaRevelada { get; set; }
+    public string? TipoContenidoRevelada { get; set; }
+    public long? TamanoBytesRevelada { get; set; }
     public int Ancho { get; set; }
     public int Alto { get; set; }
 
@@ -66,7 +82,6 @@ public class Foto
     public DateTime FechaSubidaUtc { get; set; } = DateTime.UtcNow;
 
     // El filtro no se repite aquí: se toma del rollo.
-    // La app aplica el filtro antes de subir; el servidor guarda la imagen final.
 }
 
 public class Dispositivo

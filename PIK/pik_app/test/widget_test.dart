@@ -6,6 +6,7 @@ import 'package:pik_app/api/api_client.dart';
 import 'package:pik_app/main.dart';
 import 'package:pik_app/models/modelos.dart';
 import 'package:pik_app/services/auth_service.dart';
+import 'package:pik_app/services/inicio_google.dart';
 import 'package:pik_app/services/rollos_service.dart';
 
 void main() {
@@ -48,13 +49,16 @@ void main() {
         providers: [
           Provider<ApiClient>.value(value: api),
           ChangeNotifierProvider<AuthService>.value(value: auth),
+          Provider<InicioGoogle>.value(value: InicioGoogle()),
           Provider<RollosService>(create: (_) => RollosService(api)),
         ],
         child: const PikApp(),
       ),
     );
+    await tester.pump();
 
     expect(find.text('PIK'), findsOneWidget);
-    expect(find.text('Iniciar sesión'), findsOneWidget);
+    // En las pruebas no hay Client ID de Google: la pantalla lo dice en vez de fallar.
+    expect(find.textContaining('Client ID de Google'), findsOneWidget);
   });
 }

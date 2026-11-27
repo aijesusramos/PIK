@@ -2,28 +2,22 @@
 ### Cambia el puerto por el que aparece al correr "dotnet run" (Now listening on: http://localhost:XXXX)
 @host = http://localhost:5292
 
-### 1. Registro
-POST {{host}}/api/auth/registro
+### 1-2. Iniciar sesión con Google
+### PIK ya no tiene registro ni contraseñas. Para obtener nuestro JWT:
+###   a) Entra con Google en la app (flutter run -d chrome --web-port 7357).
+###   b) En Chrome: F12 → pestaña Network → busca la petición "google" → Response.
+###   c) Copia el valor de "token" y pégalo abajo en @token (dura 24 h).
+### (También puedes copiar el "idToken" del Payload de esa petición y mandarlo aquí;
+###  el de Google vence en 1 hora.)
+POST {{host}}/api/auth/google
 Content-Type: application/json
 
 {
-  "email": "prueba2@pik.com",
-  "nombreUsuario": "prueba2",
-  "password": "Prueba1234!"
-}
-
-### 2. Login (copia el "token" de la respuesta y pégalo abajo en @token)
-POST {{host}}/api/auth/login
-Content-Type: application/json
-
-{
-  "email": "prueba2@pik.com",
-  "password": "Prueba1234!"
+  "idToken": "PEGA_AQUI_UN_ID_TOKEN_DE_GOOGLE"
 }
 
 ###
-@token = Token aqui
-  "expiraUtc": "2026-11-26T22:03:57.5798699Z
+@token = PEGA_AQUI_EL_TOKEN_DE_PIK
 
 ### 3. ¿Quién soy? (prueba que el token funciona)
 GET {{host}}/api/auth/yo
@@ -53,15 +47,26 @@ Authorization: Bearer {{token}}
 ### Pega aquí el id de un rollo Activo (sale en la respuesta de la petición 4 o 6)
 @rolloId = RolloID aqui
 
-### 7. Subir una foto al rollo
-### Necesitas el archivo prueba.jpeg en la carpeta Pik.Api (junto a este archivo).
+### 7. Subir una foto al rollo: la original ("archivo") y la revelada ("revelada").
+### La app genera el id (es la semilla del grano); aquí {{$guid}} crea uno nuevo cada vez.
+### Reenviar el MISMO id responde 200 sin duplicar la foto.
+### Necesitas el archivo prueba.jpeg en la carpeta Pik.Api (aquí se usa como las dos versiones).
 ### Ejecútala varias veces: al llegar a la capacidad, el rollo se cierra solo.
 POST {{host}}/api/rollos/{{rolloId}}/fotos
 Authorization: Bearer {{token}}
 Content-Type: multipart/form-data; boundary=----PikBoundary
 
 ------PikBoundary
+Content-Disposition: form-data; name="id"
+
+{{$guid}}
+------PikBoundary
 Content-Disposition: form-data; name="archivo"; filename="prueba.jpeg"
+Content-Type: image/jpeg
+
+< ./prueba.jpeg
+------PikBoundary
+Content-Disposition: form-data; name="revelada"; filename="prueba.jpeg"
 Content-Type: image/jpeg
 
 < ./prueba.jpeg
@@ -97,8 +102,12 @@ Authorization: Bearer {{token}}
 ### Pega aquí el id de una foto (sale en "fotoId" de la petición 7)
 @fotoId = FotoID aqui
 
-### 10. Ver la imagen -> 423 Locked mientras se revela; la imagen cuando ya está revelada
+### 10. Ver la imagen revelada -> 423 Locked mientras se revela; la imagen cuando ya está revelada
 GET {{host}}/api/fotos/{{fotoId}}/archivo
+Authorization: Bearer {{token}}
+
+### 10b. Ver la original (sin filtro). También 423 hasta el revelado.
+GET {{host}}/api/fotos/{{fotoId}}/archivo?version=original
 Authorization: Bearer {{token}}
 
 ### 11. Descargar la imagen como archivo

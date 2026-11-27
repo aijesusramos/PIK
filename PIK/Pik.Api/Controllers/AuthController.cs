@@ -1,7 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Pik.Api.Contracts;
 using Pik.Api.Data;
 using Pik.Api.Models;
@@ -9,60 +7,60 @@ using Pik.Api.Services;
 
 namespace Pik.Api.Controllers;
 
+/// <summary>
+/// Inicio de sesión. PIK no guarda contraseñas: la identidad la confirma Google.
+///   1. La app obtiene un ID token de Google (firmado por Google, dura ~1 hora).
+///   2. Lo manda aquí; el servidor lo valida CON GOOGLE (firma, emisor, vencimiento y que
+///      sea para nuestro Client ID).
+///   3. El servidor responde con NUESTRO JWT, que la app usa en el resto de la API.
+/// </summary>
 [ApiController]
 [Route("api/auth")]
 public class AuthController(
     PikDbContext db,
-    IPasswordHasher<Usuario> hasher,
-    TokenService tokens) : ControllerBase
+    IValidadorGoogle google,
+    CuentasService cuentas,
+    TokenService tokens,
+    ILogger<AuthController> log) : ControllerBase
 {
-    [HttpPost("registro")]
-    public async Task<ActionResult<AuthRespuesta>> Registro(RegistroSolicitud solicitud)
+    [HttpPost("google")]
+    public async Task<ActionResult<AuthRespuesta>> Google(LoginGoogleSolicitud solicitud)
     {
-        var email = solicitud.Email.Trim().ToLowerInvariant();
-        var nombre = solicitud.NombreUsuario.Trim();
-
-        if (await db.Usuarios.AnyAsync(u => u.Email == email))
-            return Conflict(new ErrorRespuesta("Ese correo ya está registrado."));
-
-        if (await db.Usuarios.AnyAsync(u => u.NombreUsuario == nombre))
-            return Conflict(new ErrorRespuesta("Ese nombre de usuario ya está en uso."));
-
-        var usuario = new Usuario { Email = email, NombreUsuario = nombre };
-        // Nunca se guarda la contraseña: solo su hash (PBKDF2 con sal, de ASP.NET Core Identity).
-        usuario.PasswordHash = hasher.HashPassword(usuario, solicitud.Password);
-
-        db.Usuarios.Add(usuario);
-        await db.SaveChangesAsync();
-
-        return Ok(CrearRespuesta(usuario));
-    }
-
-    [HttpPost("login")]
-    public async Task<ActionResult<AuthRespuesta>> Login(LoginSolicitud solicitud)
-    {
-        var email = solicitud.Email.Trim().ToLowerInvariant();
-        var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Email == email);
-
-        // Mismo mensaje si no existe el correo o si la contraseña es incorrecta,
-        // para no revelar qué correos están registrados.
-        if (usuario is null)
-            return Unauthorized(new ErrorRespuesta("Correo o contraseña incorrectos."));
-
-        var resultado = hasher.VerifyHashedPassword(usuario, usuario.PasswordHash, solicitud.Password);
-        if (resultado == PasswordVerificationResult.Failed)
-            return Unauthorized(new ErrorRespuesta("Correo o contraseña incorrectos."));
-
-        if (resultado == PasswordVerificationResult.SuccessRehashNeeded)
+        DatosGoogle? datos;
+        try
         {
-            usuario.PasswordHash = hasher.HashPassword(usuario, solicitud.Password);
-            await db.SaveChangesAsync();
+            datos = await google.ValidarAsync(solicitud.IdToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Falta Google:ClientIds en la configuración: es un error del servidor, no del usuario.
+            log.LogError(ex, "Inicio de sesión con Google sin configurar.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new ErrorRespuesta("El inicio de sesión con Google no está configurado en el servidor."));
+        }
+        catch (HttpRequestException ex)
+        {
+            // No se pudieron descargar las llaves públicas de Google para verificar la firma.
+            log.LogError(ex, "No se pudo contactar a Google para validar el token.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new ErrorRespuesta("No se pudo verificar tu cuenta con Google. Intenta de nuevo."));
         }
 
-        return Ok(CrearRespuesta(usuario));
+        if (datos is null)
+            return Unauthorized(new ErrorRespuesta("No se pudo verificar tu cuenta de Google."));
+
+        try
+        {
+            var usuario = await cuentas.IniciarConGoogleAsync(datos);
+            return Ok(CrearRespuesta(usuario));
+        }
+        catch (ReglaNegocioException ex)
+        {
+            return Conflict(new ErrorRespuesta(ex.Message));
+        }
     }
 
-    /// <summary>Devuelve el usuario del token. Sirve para probar que el JWT funciona.</summary>
+    /// <summary>Devuelve el usuario del token. La app lo usa para validar la sesión guardada.</summary>
     [Authorize]
     [HttpGet("yo")]
     public async Task<ActionResult<UsuarioRespuesta>> Yo()

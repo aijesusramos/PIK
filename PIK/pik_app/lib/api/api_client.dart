@@ -18,6 +18,16 @@ class ApiException implements Exception {
   String toString() => mensaje;
 }
 
+/// Un archivo para [ApiClient.postArchivos]: campo del formulario, bytes, nombre y tipo.
+class ArchivoSubida {
+  const ArchivoSubida(this.campo, this.bytes, this.nombre, this.tipo);
+
+  final String campo;
+  final List<int> bytes;
+  final String nombre;
+  final MediaType tipo;
+}
+
 /// Cliente HTTP de PIK: agrega el JWT a cada petición y convierte
 /// las respuestas de error en [ApiException] con el mensaje de la API.
 class ApiClient {
@@ -69,15 +79,12 @@ class ApiClient {
     return _procesar(respuesta);
   }
 
-  /// Sube un archivo con multipart/form-data (como un formulario HTML con <input type=file>).
+  /// Sube archivos con multipart/form-data (como un formulario HTML con <input type=file>).
   /// [campos] son los demás valores del formulario. Las fotos pueden tardar más, por eso
   /// el tiempo de espera es mayor que en las demás peticiones.
-  Future<dynamic> postArchivo(
+  Future<dynamic> postArchivos(
     String ruta, {
-    required String campoArchivo,
-    required List<int> bytes,
-    required String nombreArchivo,
-    required MediaType tipo,
+    required List<ArchivoSubida> archivos,
     Map<String, String> campos = const {},
   }) async {
     final respuesta = await _enviar(
@@ -86,12 +93,10 @@ class ApiClient {
         final peticion = http.MultipartRequest('POST', _uri(ruta))
           ..headers.addAll(_headers(json: false))
           ..fields.addAll(campos)
-          ..files.add(http.MultipartFile.fromBytes(
-            campoArchivo,
-            bytes,
-            filename: nombreArchivo,
-            contentType: tipo,
-          ));
+          ..files.addAll([
+            for (final a in archivos)
+              http.MultipartFile.fromBytes(a.campo, a.bytes, filename: a.nombre, contentType: a.tipo),
+          ]);
         return http.Response.fromStream(await _client.send(peticion));
       },
       limite: const Duration(seconds: 60),

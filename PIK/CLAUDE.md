@@ -132,7 +132,8 @@ byte alterado o archivo movido → falla, clave inválida → no arranca, endpoi
   `http://localhost:5292`). En emulador Android sería `http://10.0.2.2:5292`; en teléfono físico,
   la IP de la PC.
 - `lib/api/api_client.dart` — agrega el JWT, convierte errores en `ApiException(statusCode, mensaje)`.
-- **Inicio de sesión con Google** (`screens/login_screen.dart`, no hay pantalla de registro):
+- **Inicio de sesión con Google** (`screens/login_screen.dart`, no hay pantalla de registro; mismo
+  cuerpo metálico: rollo OG, "PIK" grabado y el botón de Google dentro de un `PanelHundido`):
   `services/inicio_google.dart` envuelve `google_sign_in` 7 (`initialize` una vez; el ID token
   llega por `authenticationEvents`). Web: Google **solo permite su botón oficial**
   (`renderButton`, `widgets/boton_google_web.dart`); Android/iOS: botón propio que llama a
@@ -156,10 +157,17 @@ byte alterado o archivo movido → falla, clave inválida → no arranca, endpoi
     (muestra el filtro y fotos restantes; sin rollo es "+" → `NuevoRolloScreen`). Tocar el rollo
     abre `widgets/panel_rollo.dart`: info, **Terminar rollo** (cierre manual, ≥1 foto) y cambiar
     título. La cámara se apaga cuando no se ve (`visible`) y la página se conserva (keep-alive).
-  - Mis rollos: secciones Tomando fotos / En el cuarto oscuro / Revelados; cerrar sesión en el
-    menú ⋮. Tocar un Revelado (o Revelando con el tiempo cumplido: el servidor valida por la hora)
-    abre `galeria_screen.dart` (cuadrícula) → `visor_foto_screen.dart` (PageView + zoom +
-    descargar). Mantener presionado una tarjeta abre el panel.
+  - Mis rollos (`rollos_screen.dart`): mismo cuerpo metálico que la cámara, botón
+    `assets/iconos/camara.png` para volver, "MIS ROLLOS" grabado, cerrar sesión en el menú ⋮.
+    Dos `PanelHundido`: **En el cuarto oscuro** (lista: Revelando por fin más próximo con barra
+    de avance y "FALTAN 2h 05m", luego EnCola) y **Revelados** (cuadrícula tipo mochila,
+    `SliverGridDelegateWithMaxCrossAxisExtent` 190 px: icono, título, filtro · fotos y
+    "REVELADO 24 NOV 2026" = `fechaFinRevelado`, el más reciente primero). El rollo **Activo no
+    aparece** (se maneja desde la cámara). Un Revelando con la hora cumplida cuenta como
+    revelado (el servidor valida por la hora). Un `Timer` de 30 s redibuja la cuenta regresiva.
+    Tocar un revelado abre `galeria_screen.dart` (cuadrícula) → `visor_foto_screen.dart`
+    (PageView + zoom + descargar); tocar uno del cuarto oscuro o mantener presionado abre el panel.
+    `TarjetaRollo` ya no existe (`tarjeta_rollo.dart` solo tiene `IconoRollo`).
 - `NuevoRolloScreen`: filtro → capacidad + título opcional (el hint muestra el "Rollo N").
 - Cámara: la foto **no se muestra** al tomarla y el **visor no muestra filtro** (como una cámara
   de rollo). Una foto a la vez, con el obturador bloqueado ("Avanzando…"):

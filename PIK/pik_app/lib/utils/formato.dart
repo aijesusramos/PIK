@@ -11,6 +11,13 @@ String formatearDuracion(Duration d) {
   return 'menos de 1 min';
 }
 
+/// Solo el día, en la hora local: "25 NOV 2026" (como la fecha que imprimen algunas cámaras).
+String formatearDia(DateTime fecha) {
+  const meses = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+  final f = fecha.toLocal();
+  return '${f.day.toString().padLeft(2, '0')} ${meses[f.month - 1]} ${f.year}';
+}
+
 /// Fecha en la hora local del dispositivo: "25/11/2026 14:30".
 /// La API manda UTC; toLocal() la convierte a la zona horaria del usuario.
 String formatearFecha(DateTime fecha) {
